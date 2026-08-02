@@ -1,0 +1,83 @@
+// proto3 is the current version of the Protocol Buffers language. It controls
+// syntax rules and default behavior (e.g. all fields are optional-by-default
+// and have zero-value defaults rather than explicit presence tracking).
+syntax = "proto3";
+
+// The package namespaces the generated types on the wire and in code. Fully
+// qualified, this service is "slack.message.v1.MessageService" — that's the
+// string grpcurl will use. The ".v1" is a deliberate versioning convention:
+// when we later make breaking changes, we introduce a v2 package rather than
+// mutating v1, so old clients keep working.
+package slack.message.v1;
+
+// ---------------------------------------------------------------------------
+// Domain type
+// ---------------------------------------------------------------------------
+
+// A single chat message. This is the shape we store and return.
+//
+// The numbers (= 1, = 2, ...) are FIELD TAGS, not values. They are the field's
+// identity on the wire — Protobuf serializes "field #3 = <bytes>", never the
+// field name. Consequences to internalize:
+//   - Tags must be UNIQUE within a message and, once shipped, must NEVER change.
+//   - You can freely rename a field (name is cosmetic, only for codegen) as long
+//     as the tag stays put.
+//   - To remove a field, stop using its tag and never reuse that number.
+//   - Tags 1–15 encode in a single byte, so give them to your most common fields.
+message Message {
+  string id = 1;          // server-generated unique id (we'll use a UUID string)
+  string channel_id = 2;  // which channel this message belongs to
+  string sender = 3;      // who sent it
+  string body = 4;        // the message text
+  int64 created_at = 5;   // creation time as a Unix epoch (seconds)
+}
+
+// ---------------------------------------------------------------------------
+// RPC request/response messages
+//
+// Convention: give every RPC its own Request and Response message, even when a
+// field could be reused. This lets each RPC's contract evolve independently —
+// adding a field to SendMessageRequest never affects GetMessages.
+// ---------------------------------------------------------------------------
+
+// The client supplies everything EXCEPT id and created_at — the server assigns
+// those. So the request intentionally omits them.
+message SendMessageRequest {
+  string channel_id = 1;
+  string sender = 2;
+  string body = 3;
+}
+
+// We echo back the fully-formed stored Message (now including its server-
+// assigned id and created_at). Wrapping it in a response message — rather than
+// returning a bare Message — keeps room to add fields later (e.g. a status).
+message SendMessageResponse {
+  Message message = 1;
+}
+
+// Fetch the messages for one channel.
+message GetMessagesRequest {
+  string channel_id = 1;
+}
+
+// "repeated" means a list — zero or more Messages. This is how Protobuf models
+// arrays; the generated Python code exposes it as a list-like field.
+message GetMessagesResponse {
+  repeated Message messages = 1;
+}
+
+// ---------------------------------------------------------------------------
+// The service: a named collection of RPC methods.
+//
+// Each "rpc" line is: method name, request type (in parens), returns, response
+// type (in parens). Both of ours are UNARY — one request in, one response out
+// (the plain request→response shape). The "stream" keyword, which we're
+// deferring, would turn either side into a stream.
+// ---------------------------------------------------------------------------
+service MessageService {
+  // Write one message, get the stored version back.
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+
+  // Read all messages in a channel.
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+}
