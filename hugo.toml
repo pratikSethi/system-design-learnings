@@ -1,0 +1,41 @@
+# Hugo config for the system-design-learnings notes site (Hugo + Hextra).
+# Deployed via GitHub Pages at a subpath, fronted by pratiksethi.dev.
+
+baseURL = "https://pratiksethi.dev/system-design-learnings/"
+title = "System Design Learnings"
+theme = "hextra"
+
+# Pretty, trailing-slash URLs (page bundles → /concepts/networking/grpc/).
+enableGitInfo = true
+
+# Only build from content/ — projects/ (code) is never touched by Hugo.
+[markup]
+  [markup.highlight]
+    noClasses = false          # let the theme own syntax-highlight styling
+  [markup.goldmark.renderer]
+    unsafe = true              # allow raw HTML in Markdown (for interactive components later)
+
+[params]
+  [params.navbar]
+    displayTitle = true
+    displayLogo = false
+  [params.footer]
+    displayCopyright = true
+    displayPoweredBy = false
+  [params.editURL]
+    enable = false
+
+# Top navbar links
+[[menu.main]]
+  name = "Concepts"
+  pageRef = "/concepts"
+  weight = 1
+[[menu.main]]
+  name = "Search"
+  weight = 2
+  [menu.main.params]
+    type = "search"
+[[menu.main]]
+  name = "GitHub"
+  url = "https://github.com/pratikSethi/system-design-learnings"
+  weight = 3
