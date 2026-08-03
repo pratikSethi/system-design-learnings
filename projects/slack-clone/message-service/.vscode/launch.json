@@ -1,0 +1,34 @@
+{
+  // VSCode debug configuration for message-service.
+  //
+  // "Debug: integration tests" runs the pytest suite under the debugger. Because
+  // the tests start a REAL gRPC server in-process (see the server_target fixture),
+  // a SINGLE debug session lets you set breakpoints on BOTH sides:
+  //   - test/client code in tests/test_integration.py
+  //   - server handlers in message_service/server.py (SendMessage, GetMessages)
+  // You can step from a client call straight into the server handler. No separate
+  // terminal, no running server needed — the tests bring their own.
+  //
+  // HOW TO USE:
+  //   1. Click to the left of a line number to set a red-dot breakpoint
+  //      (try inside SendMessage in server.py, and in a test in test_integration.py).
+  //   2. Open Run and Debug (⇧⌘D), pick "Debug: integration tests", press ▶ (F5).
+  //   3. Execution pauses at your breakpoint. Use the toolbar:
+  //        Continue F5 · Step Over F10 · Step Into F11 · Step Out ⇧F11
+  //      Inspect variables in the left panel, or hover over them in the editor.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: integration tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-s", "-v"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      // justMyCode:false lets you also step into library code (e.g. grpc) if you
+      // want; set to true to keep the debugger confined to your own files.
+      "justMyCode": false
+    }
+  ]
+}

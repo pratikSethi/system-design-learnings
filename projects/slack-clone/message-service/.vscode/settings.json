@@ -1,0 +1,12 @@
+{
+  // Pin VSCode to this project's uv-managed virtualenv, so "Debug", "Run", and
+  // the Test Explorer all use the interpreter that has grpcio/pytest/debugpy.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
+  // Wire up the Test Explorer (beaker icon) to pytest, rooted at this folder.
+  // This lets you run/debug individual tests by clicking the gutter icons next
+  // to each test function — an alternative to the Run and Debug panel.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"]
+}

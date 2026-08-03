@@ -9,3 +9,15 @@ dependencies = [
     "grpcio-reflection>=1.83.0",
     "grpcio-tools>=1.83.0",
 ]
+
+[dependency-groups]
+dev = [
+    "debugpy>=1.8.21",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# Make the message_service package importable without installing it: the tests
+# import `from message_service import ...`, so pytest must see the project root.
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -119,6 +119,93 @@ grpcurl -plaintext -d '{"channel_id":"general"}' \
 
 ---
 
+## Python client
+
+[`message_service/client.py`](message_service/client.py) is a minimal programmatic
+client — the same role the chat/gateway tier plays in a real system. It's both a
+runnable script and the client used by the automated tests.
+
+```bash
+# Requires the server to be running (see "Start / stop the server" above).
+# Sends one message to #general, then reads the channel back.
+uv run python -m message_service.client
+```
+
+> Run this from the **project root** (`message-service/`), not from inside the
+> inner `message_service/` package — `python -m` resolves modules against the
+> current directory, so from the wrong folder you'll get `No module named
+> 'message_service'`.
+
+---
+
+## Automated tests (integration)
+
+These are **integration** tests, not unit tests: each test starts a *real* gRPC
+server in a background thread on an ephemeral port and drives it with a *real*
+client over a *real* socket (HTTP/2 + protobuf + SQLite) — nothing is mocked. Each
+test gets its own fresh SQLite DB (via `tmp_path`) and its own port, so they're
+isolated and never touch your real `messages.db`.
+
+No server needs to be running first — the tests start and stop their own.
+
+```bash
+# from the project root (message-service/)
+
+uv run pytest              # run all tests (quiet)
+uv run pytest -v           # one line per test
+uv run pytest -s           # show print()s (e.g. "[fixture] server started on ...")
+uv run pytest -s -v        # both: verbose + prints
+```
+
+> `-s` disables pytest's stdout capture. Without it, `print()` output is hidden
+> for passing tests (shown only on failure).
+
+Why no [testcontainers](https://testcontainers.com/)? It exists to spin up
+*external* dependencies (Postgres, Kafka, Redis) in Docker. This service embeds
+SQLite in-process, so there's nothing external to containerize — starting the
+server in-thread is simpler and just as real. If the store ever moves to Postgres,
+that's the moment to introduce testcontainers.
+
+---
+
+## Debugging in VSCode
+
+Config lives in [`.vscode/`](.vscode/) (`launch.json` + `settings.json`, using
+[`debugpy`](https://github.com/microsoft/debugpy), the official VSCode Python
+debugger). Because the integration tests start a **real server in-process**, one
+debug session lets you breakpoint **both** the test/client side and the server
+handlers — you can step from a client call straight into `SendMessage`.
+
+**Setup (one-time):**
+
+1. Open the `message-service` folder as its own VSCode window
+   (**File → Open Folder →** this directory). The `.vscode/` config only loads
+   for the folder that's open as the workspace root.
+2. Install the **Python extension** (`ms-python.python`) if you haven't — it
+   provides the `debugpy` debug type and the Test Explorer.
+
+**Two ways to debug:**
+
+- **Test Explorer (easiest):** click the beaker icon in the sidebar. Each test has
+  a ▶ (run) and 🐞 (debug) icon — click 🐞 next to any test to debug just that one.
+- **Run and Debug panel (⇧⌘D):** pick **"Debug: integration tests"**, press F5 to
+  run the whole suite under the debugger.
+
+**Once paused at a breakpoint:**
+
+| Key | Action |
+|---|---|
+| F5 | Continue to next breakpoint |
+| F10 | Step Over (run line, don't descend) |
+| F11 | Step Into (descend into the call) |
+| ⇧F11 | Step Out (finish current function) |
+
+Try it: set a breakpoint in a test at the `client.send(...)` line, start debugging,
+then press **F11** repeatedly — you'll travel through the gRPC stub and land inside
+`SendMessage` in `server.py`. Inspect variables in the left panel or hover in the editor.
+
+---
+
 ## Inspecting the database
 
 The SQLite file is `messages.db` in this directory.
@@ -142,6 +229,9 @@ message-service/
     message_pb2.py              # GENERATED — data types (do not hand-edit)
     message_pb2_grpc.py         # GENERATED — server base + client stub
     server.py                   # gRPC server + SQLite handlers
+    client.py                   # programmatic client (script + test helper)
+  tests/
+    test_integration.py         # real server + real client, over a real socket
   messages.db                   # SQLite data (gitignored)
-  pyproject.toml / uv.lock      # deps: grpcio, grpcio-tools, grpcio-reflection
+  pyproject.toml / uv.lock      # deps: grpcio*, pytest (dev)
 ```
