@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="1220" viewBox="0 0 1180 1220" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <!-- arrow markers -->
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4b5563"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#059669"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ea580c"/>
+    </marker>
+    <style>
+      .title    { font-size: 26px; font-weight: 700; fill: #111827; }
+      .phase    { font-size: 19px; font-weight: 700; fill: #1f2937; }
+      .box      { font-size: 14px; font-weight: 600; fill: #111827; }
+      .sub      { font-size: 11.5px; fill: #6b7280; }
+      .lbl      { font-size: 12.5px; font-weight: 600; fill: #374151; }
+      .lblblue  { font-size: 12.5px; font-weight: 600; fill: #2563eb; }
+      .lblgreen { font-size: 12.5px; font-weight: 600; fill: #059669; }
+      .lblorange{ font-size: 12.5px; font-weight: 600; fill: #ea580c; }
+      .step     { font-size: 12px; font-weight: 700; fill: #ffffff; }
+      .note     { font-size: 12px; fill: #4b5563; }
+    </style>
+  </defs>
+
+  <rect width="1180" height="1220" fill="#f9fafb"/>
+  <text x="40" y="46" class="title">Slack message flow — connect once, reuse per message</text>
+
+  <!-- ============ PHASE A ============ -->
+  <rect x="30" y="70" width="1120" height="440" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="52" y="102" class="phase" fill="#1d4ed8">Phase A — Establish the pipe (once, at startup)</text>
+
+  <!-- Client A -->
+  <rect x="60" y="150" width="150" height="70" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="135" y="182" text-anchor="middle" class="box">Client A</text>
+  <text x="135" y="202" text-anchor="middle" class="sub">app / browser</text>
+
+  <!-- API service -->
+  <rect x="470" y="130" width="180" height="70" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="560" y="162" text-anchor="middle" class="box">API service (L7)</text>
+  <text x="560" y="182" text-anchor="middle" class="sub">auth + discovery</text>
+
+  <!-- L4 LB -->
+  <rect x="470" y="270" width="180" height="70" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="560" y="300" text-anchor="middle" class="box">L4 LB (NLB)</text>
+  <text x="560" y="320" text-anchor="middle" class="sub">TCP relay, no HTTP parse</text>
+
+  <!-- Gateway G1 -->
+  <rect x="850" y="270" width="200" height="80" rx="10" fill="#ffffff" stroke="#3b82f6" stroke-width="2.5"/>
+  <text x="950" y="300" text-anchor="middle" class="box">Gateway G1</text>
+  <text x="950" y="319" text-anchor="middle" class="sub">terminates WebSocket</text>
+  <text x="950" y="336" text-anchor="middle" class="sub">= gRPC client</text>
+
+  <!-- Presence registry -->
+  <rect x="850" y="410" width="200" height="70" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="2"/>
+  <text x="950" y="440" text-anchor="middle" class="box">Presence registry</text>
+  <text x="950" y="460" text-anchor="middle" class="sub">"A@G1, chans=[XYZ]"</text>
+
+  <!-- A1: HTTPS auth -->
+  <line x1="210" y1="168" x2="468" y2="165" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <circle cx="300" cy="150" r="12" fill="#2563eb"/><text x="300" y="154" text-anchor="middle" class="step">A1</text>
+  <text x="335" y="145" class="lblblue">HTTPS auth → returns WSS URL</text>
+
+  <!-- A2: TCP/TLS to LB -->
+  <line x1="210" y1="200" x2="468" y2="298" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <circle cx="330" cy="252" r="12" fill="#2563eb"/><text x="330" y="256" text-anchor="middle" class="step">A2</text>
+  <text x="250" y="270" class="lblblue">TCP + TLS</text>
+
+  <!-- A3: LB relays to gateway, WS upgrade -->
+  <line x1="650" y1="305" x2="848" y2="305" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <circle cx="740" cy="290" r="12" fill="#2563eb"/><text x="740" y="294" text-anchor="middle" class="step">A3</text>
+  <text x="690" y="285" text-anchor="middle" class="lblblue">WS upgrade (101)</text>
+
+  <!-- A4: register presence -->
+  <line x1="950" y1="350" x2="950" y2="408" stroke="#ea580c" stroke-width="2" marker-end="url(#arrowOrange)"/>
+  <circle cx="950" cy="380" r="12" fill="#ea580c"/><text x="950" y="384" text-anchor="middle" class="step">A4</text>
+  <text x="968" y="384" class="lblorange">register socket</text>
+
+  <!-- persistent pipe note -->
+  <text x="60" y="255" class="note">Persistent WebSocket</text>
+  <text x="60" y="272" class="note">stays open for the</text>
+  <text x="60" y="289" class="note">whole session ↓</text>
+  <path d="M135 220 C 135 400, 560 380, 848 315" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#arrowBlue)"/>
+  <text x="360" y="470" class="lblblue">↑ One reused pipe:  Client A  ⇄  L4 LB (relay)  ⇄  Gateway G1</text>
+
+  <!-- ============ PHASE B ============ -->
+  <rect x="30" y="540" width="1120" height="650" rx="12" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="52" y="572" class="phase" fill="#047857">Phase B — Send a message to channel XYZ (per message)</text>
+
+  <!-- Client A -->
+  <rect x="60" y="610" width="150" height="70" rx="10" fill="#ffffff" stroke="#86efac" stroke-width="2"/>
+  <text x="135" y="642" text-anchor="middle" class="box">Client A</text>
+  <text x="135" y="662" text-anchor="middle" class="sub">sends "hi" → XYZ</text>
+
+  <!-- Gateway G1 -->
+  <rect x="330" y="600" width="180" height="90" rx="10" fill="#ffffff" stroke="#22c55e" stroke-width="2.5"/>
+  <text x="420" y="630" text-anchor="middle" class="box">Gateway G1</text>
+  <text x="420" y="649" text-anchor="middle" class="sub">authN + validate</text>
+  <text x="420" y="666" text-anchor="middle" class="sub">attaches trusted user_id</text>
+  <text x="420" y="683" text-anchor="middle" class="sub">= gRPC client</text>
+
+  <!-- message-service -->
+  <rect x="640" y="600" width="200" height="90" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2.5"/>
+  <text x="740" y="630" text-anchor="middle" class="box">message-service</text>
+  <text x="740" y="649" text-anchor="middle" class="sub">assign message_id + ts</text>
+  <text x="740" y="666" text-anchor="middle" class="sub">idempotency via</text>
+  <text x="740" y="683" text-anchor="middle" class="sub">client_msg_id</text>
+
+  <!-- DB -->
+  <rect x="960" y="600" width="150" height="90" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+  <path d="M985 625 a50 8 0 0 0 100 0" fill="none" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="1035" y="655" text-anchor="middle" class="box">Datastore</text>
+  <text x="1035" y="674" text-anchor="middle" class="sub">channel history</text>
+
+  <!-- pub/sub -->
+  <rect x="640" y="790" width="200" height="70" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+  <text x="740" y="820" text-anchor="middle" class="box">Pub/Sub (Kafka)</text>
+  <text x="740" y="840" text-anchor="middle" class="sub">message.created(XYZ)</text>
+
+  <!-- fan-out -->
+  <rect x="640" y="920" width="200" height="80" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2.5"/>
+  <text x="740" y="950" text-anchor="middle" class="box">Fan-out service</text>
+  <text x="740" y="969" text-anchor="middle" class="sub">who's in XYZ + online?</text>
+  <text x="740" y="986" text-anchor="middle" class="sub">on which gateway?</text>
+
+  <!-- presence registry (B) -->
+  <rect x="960" y="925" width="150" height="70" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="2"/>
+  <text x="1035" y="955" text-anchor="middle" class="box">Presence</text>
+  <text x="1035" y="974" text-anchor="middle" class="sub">registry lookup</text>
+
+  <!-- gateways for recipients -->
+  <rect x="120" y="1080" width="140" height="66" rx="10" fill="#ffffff" stroke="#22c55e" stroke-width="2"/>
+  <text x="190" y="1110" text-anchor="middle" class="box">Gateway G1</text>
+  <text x="190" y="1129" text-anchor="middle" class="sub">→ B's socket</text>
+
+  <rect x="320" y="1080" width="140" height="66" rx="10" fill="#ffffff" stroke="#22c55e" stroke-width="2"/>
+  <text x="390" y="1110" text-anchor="middle" class="box">Gateway G2</text>
+  <text x="390" y="1129" text-anchor="middle" class="sub">→ C's socket</text>
+
+  <rect x="520" y="1080" width="140" height="66" rx="10" fill="#ffffff" stroke="#22c55e" stroke-width="2"/>
+  <text x="590" y="1110" text-anchor="middle" class="box">Gateway G5</text>
+  <text x="590" y="1129" text-anchor="middle" class="sub">→ D's socket</text>
+
+  <!-- B1: client -> gateway -->
+  <line x1="210" y1="640" x2="328" y2="640" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <circle cx="269" cy="623" r="12" fill="#059669"/><text x="269" y="627" text-anchor="middle" class="step">B1</text>
+  <text x="230" y="608" class="lblgreen">WS frame (reused pipe)</text>
+
+  <!-- B3: gateway -> message-service -->
+  <line x1="510" y1="640" x2="638" y2="640" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <circle cx="574" cy="623" r="12" fill="#059669"/><text x="574" y="627" text-anchor="middle" class="step">B3</text>
+  <text x="527" y="608" class="lblgreen">gRPC SendMessage</text>
+
+  <!-- B4: message-service -> DB -->
+  <line x1="840" y1="645" x2="958" y2="645" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <circle cx="899" cy="628" r="12" fill="#059669"/><text x="899" y="632" text-anchor="middle" class="step">B4</text>
+  <text x="852" y="618" class="lblgreen">persist</text>
+
+  <!-- B5: ack back to client -->
+  <path d="M638 672 C 300 730, 300 700, 210 665" fill="none" stroke="#9ca3af" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+  <circle cx="430" cy="712" r="12" fill="#6b7280"/><text x="430" y="716" text-anchor="middle" class="step">B5</text>
+  <text x="455" y="716" class="lbl">ack → sender (client_msg_id, ts)</text>
+
+  <!-- B6: message-service -> pub/sub -->
+  <line x1="740" y1="690" x2="740" y2="788" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <circle cx="740" cy="740" r="12" fill="#059669"/><text x="740" y="744" text-anchor="middle" class="step">B6</text>
+  <text x="758" y="744" class="lblgreen">publish event</text>
+
+  <!-- pubsub -> fanout -->
+  <line x1="740" y1="860" x2="740" y2="918" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- B7: fanout <-> presence -->
+  <line x1="840" y1="960" x2="958" y2="960" stroke="#ea580c" stroke-width="2" marker-end="url(#arrowOrange)"/>
+  <circle cx="899" cy="943" r="12" fill="#ea580c"/><text x="899" y="947" text-anchor="middle" class="step">B7</text>
+  <text x="852" y="933" class="lblorange">lookup</text>
+
+  <!-- B8: fanout -> gateways -->
+  <path d="M660 985 C 400 1030, 250 1040, 190 1078" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <path d="M700 1000 C 550 1040, 430 1050, 390 1078" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <path d="M720 1000 C 660 1040, 610 1050, 590 1078" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <circle cx="470" cy="1035" r="12" fill="#059669"/><text x="470" y="1039" text-anchor="middle" class="step">B8</text>
+  <text x="490" y="1039" class="lblgreen">push to each online recipient's socket</text>
+
+  <!-- legend -->
+  <rect x="880" y="1075" width="270" height="95" rx="8" fill="#ffffff" stroke="#e5e7eb" stroke-width="1.5"/>
+  <text x="895" y="1097" class="lbl">Legend</text>
+  <line x1="895" y1="1112" x2="925" y2="1112" stroke="#2563eb" stroke-width="2.5"/><text x="932" y="1116" class="sub">connect / HTTPS+WS</text>
+  <line x1="895" y1="1132" x2="925" y2="1132" stroke="#059669" stroke-width="2.5"/><text x="932" y="1136" class="sub">message path (internal)</text>
+  <line x1="895" y1="1152" x2="925" y2="1152" stroke="#ea580c" stroke-width="2.5"/><text x="932" y="1156" class="sub">presence / routing lookup</text>
+</svg>
