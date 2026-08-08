@@ -56,11 +56,19 @@ content/concepts/networking/grpc/
 
 Site (from repo root):
 ```bash
-hugo server --port 1313 --baseURL http://localhost --appendPort=true   # local preview
-hugo --gc --minify                                                      # production build
+hugo server --port 1313 --baseURL "http://localhost:1313/" --appendPort=false   # local preview
+hugo --gc --minify                                                              # production build
 ```
 Deploy is automatic via `.github/workflows/deploy.yml` on push to `main` (GitHub Pages,
 Actions source). The workflow injects the correct `--baseURL` subpath.
+
+> ⚠️ **Local preview gotcha:** `hugo.toml`'s `baseURL` carries the production
+> `/system-design-learnings/` subpath. Running `hugo --gc --minify` (a production build)
+> **while the dev server is up** poisons `resources/_gen` + `public/` with subpath-prefixed
+> asset URLs, so the dev server then 404s all CSS/JS (page renders unstyled). Fix: kill the
+> server, `rm -rf resources/_gen public/ .hugo_build.lock`, restart with the explicit
+> root baseURL above. Don't run production builds against the live dev server — the server
+> already rebuilds on save and surfaces errors.
 
 gRPC message-service (from `projects/slack-clone/message-service/`):
 ```bash
