@@ -260,6 +260,79 @@ nullable (`Show`, not `Show!`).
 - **The Router** — query planning, `_entities` resolution, fetching across subgraphs.
 - **Composition: build-time vs runtime** — schema registry, composition checks in CI, breaking-change detection; why build-time composition is the industry-standard safety net.
 - **Netflix's approach** — the DGS (Domain Graph Service) framework + federation. _(cited below)_
+- **[Field-level access governance](#field-level-access-governance)** — who (which consumer) may read which `Type.field`; why per-field default-deny matters in a federated graph (written below).
+
+### Field-level access governance
+
+_(draft — captured from a discussion; the sharp enterprise concern in a federated graph)_
+
+In a federated graph the **supergraph sees every `Type.field` from every subgraph**, and many
+consumers (client apps, internal tools) query one gateway. With Personally Identifiable
+Information (PII), compliance, and security in play, the enterprise question becomes: **who is
+allowed to read which field?** — and, critically, when a subgraph adds a new (possibly
+sensitive) field, it must **not** become blindly readable by everyone.
+
+**Core idea (one sentence):**
+
+> Access is granted per **(type, field) × consumer**, **default-deny**, and each grant is an
+> **owner-approved request** that doubles as the permanent record.
+
+Unpack it:
+
+- **Per-field, not per-service.** A consumer isn't granted "the People subgraph" — it's granted
+  a specific list like `Person.name`, `Person.filmography`. The unit of authorization is one field.
+- **Per-consumer.** Each calling app has its own allowlist; App A's grant does nothing for App B.
+- **Default-deny.** A field is unreadable until explicitly granted — *even though it's visible in
+  the schema*. **Visibility ≠ authorization** (two separate layers).
+- **Owner-approved.** The request routes to the team that owns the field; they consent or refuse.
+- **Request = record.** Each grant is tracked (requester, exact fields, approver, timestamp) — the
+  workflow *is* the audit trail.
+
+The gateway holds a live mapping, e.g.:
+
+```text
+Person.id            → allowed for: [appA, appB, ...]
+Person.name          → allowed for: [appA, ...]
+Person.filmography   → allowed for: [appA, ...]
+Person.agentContact  → allowed for: [ ]        ← newly added field: nobody, yet
+```
+
+**Why per-field + default-deny is the crux.** Because grants enumerate *specific* fields, a
+consumer's prior approval says nothing about a field that didn't exist yet — a new field starts
+with an **empty allowlist**. So adding a field can never *silently* widen who reads data; each new
+field forces the owner to re-consent, per consumer. If access were **per-service**, adding a
+sensitive field would leak it to every historical consumer of that service by default. Per-field
+default-deny closes that hole *by construction*.
+
+**What the system gives you:** (1) **runtime authorization** — the gateway rejects any field the
+caller isn't listed for; (2) a **system of record** — reverse-lookup "who can read
+`Person.agentContact`?" or "what can App X read?", with approver + timestamp; (3) **compliance** —
+provable least-privilege/data-minimization, named accountability (auto-approvals get removed over
+time — an auto-grant is an unaccountable grant), change safety, and fast incident scoping.
+
+**Two distinctions worth keeping straight:**
+
+- **Grant-time vs run-time.** The grant record answers *"can this app ever read this field?"* It
+  does **not** record *"did it, when, how often?"* — that's runtime query logs/telemetry. Full
+  auditability needs **both**; the grant record is not a substitute for access logging.
+- **Application-field vs contextual (per-subject) authorization.** Field-level app auth answers
+  *"can this app read this field type at all?"* — not *"may this session see **this customer's**
+  data right now?"* The latter is a separate contextual gate. The most sensitive fields may add a
+  third layer: **encryption-scoped access** (encrypted at rest; decryption needs its own grant, so
+  field access ≠ plaintext access). Regulated systems tend to stack all three.
+
+**Costs (it's not free):** developer friction (every new field a consumer needs is an approval
+before shipping); approval **bottlenecks / rubber-stamping** if owners are overloaded; governance
+overhead (maintaining the registry, pruning stale/orphaned grants — grants accumulate and rarely
+get revoked); it's coarse at the row/subject grain (still need the contextual layer); and
+**grant ≠ usage**. Good tooling (query builders, batch requests, sensible defaults for
+low-sensitivity fields, clear sensitivity tiers) is what keeps the friction bearable.
+
+**Generalizes beyond GraphQL:** any shared multi-team API surface, data-sharing platforms
+(per-column grants approved by data owners), internal platform APIs that outgrew coarse
+service-level roles. Minimal ingredients: a registry mapping fine-grained resources → allowed
+consumers, enforcement at the gateway that consults it, an owner-routed approval workflow that
+persists decisions, and **default-deny** (new resources deny-by-default).
 
 ## Production concerns
 
