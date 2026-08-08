@@ -184,12 +184,73 @@ timeouts** (one slow downstream can't hang the whole query).
 
 _(sections filled in as the project progresses — this is the map)_
 
-- **Schema & types** — the type system (SDL), `Query`/`Mutation`/`Subscription` roots, scalars, objects, enums, interfaces, unions.
+- **Schema & types** — [the type system](#the-type-system) (written below).
 - **Resolvers** — the function behind every field; how a query tree resolves; `context` (auth, loaders); why a resolver is *thin delegation*, not business logic.
 - **Over- / under-fetching** — the REST problem GraphQL targets: one round-trip, exactly the fields asked for.
 - **The N+1 problem & DataLoader** — the sharp edge; per-request batching + caching.
 - **Pagination** — offset vs cursor; the Relay **connections** spec (`edges`/`node`/`pageInfo`).
 - **Errors** — partial success (`data` + `errors`), error masking, and why HTTP is usually `200`.
+
+### The type system
+
+_(draft — grows as the project adds a Mutation, input filters, an interface)_
+
+**Mental model:** **scalars & enums** are *leaves* (actual values); **objects, interfaces,
+unions** are *branches* (you select sub-fields on them); **input types** are data going *in*
+(arguments); **`!` and `[]`** are modifiers layered on any of them.
+
+**Scalars** — the leaf values, can't be drilled into. Five built-in:
+
+| Scalar | Holds | In `shows.graphql` |
+|---|---|---|
+| `Int` | 32-bit signed integer | `releaseYear: Int!` |
+| `Float` | double-precision float | — |
+| `String` | UTF-8 text | `title: String!` |
+| `Boolean` | `true` / `false` | — |
+| `ID` | opaque unique key — serialized as a String, but "don't do math on it" | `id: ID!` |
+
+You can define **custom scalars** too (`scalar DateTime`, `scalar URL`) with serialize/parse
+logic in code — common for dates/emails.
+
+**Object type** — a named set of fields; the workhorse (`type Show { … }`).
+
+**The three root objects** — ordinary objects GraphQL treats as entry points:
+`Query` (reads), `Mutation` (writes), `Subscription` (a stream of events over time, realtime).
+
+**Enum** — a closed set of named values (`enum ShowKind { MOVIE SERIES }`); anything else is
+a validation error.
+
+**Interface** — shared fields several objects implement; a field can return the interface and
+clients pick concrete fields via `... on Show { … }`.
+
+```graphql
+interface Media { id: ID!  title: String! }
+type Show implements Media { id: ID!  title: String!  kind: ShowKind! }
+```
+
+**Union** — "one of these types, sharing **no** common fields" — e.g. `union SearchResult = Show | Person | Collection`. Clients select per-type with inline fragments.
+
+**Input type** — a special object used **only for arguments** (you can't pass a regular
+`type` as an argument). Pure data-in:
+
+```graphql
+input ShowFilter { kind: ShowKind  releasedAfter: Int }
+type Query { shows(filter: ShowFilter): [Show!]! }
+```
+
+**Modifiers — `!` (non-null) and `[]` (list).** Separate from *what kind* a type is. The
+list + non-null combinations mean different things, and this is the part worth pinning down:
+
+```graphql
+[Show]     # list may be null; items may be null
+[Show!]    # list may be null; no null items inside
+[Show!]!   # list never null (at least []), no null items   ← our `shows`
+[Show]!    # list never null; but items may be null
+```
+
+So `shows: [Show!]!` is a real contract: *always* a list, every element a real `Show`.
+`show(id: ID!): Show` is deliberately the opposite — a lookup **may miss**, so the return is
+nullable (`Show`, not `Show!`).
 
 ## Federation (the endgame)
 
