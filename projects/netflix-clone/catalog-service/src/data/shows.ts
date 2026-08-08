@@ -27,3 +27,11 @@ const SHOWS: Show[] = [
 export function findAllShows(): Show[] {
   return SHOWS;
 }
+
+/**
+ * Find one show by id, or undefined if none matches. Stands in for
+ * `SELECT * FROM shows WHERE id = ?` / a gRPC GetShow call.
+ */
+export function findShowById(id: string): Show | undefined {
+  return SHOWS.find((show) => show.id === id);
+}

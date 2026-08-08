@@ -27,4 +27,7 @@ enum ShowKind {
 type Query {
   "All shows in the catalog."
   shows: [Show!]!
+
+  "A single show by id, or null if none matches. Nullable return = the lookup may miss."
+  show(id: ID!): Show
 }
