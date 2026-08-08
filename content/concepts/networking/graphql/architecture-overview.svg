@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4b5563"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#059669"/>
+    </marker>
+    <style>
+      .title    { font-size: 26px; font-weight: 700; fill: #111827; }
+      .subtitle { font-size: 14px; fill: #6b7280; }
+      .group    { font-size: 13px; font-weight: 700; fill: #6b7280; letter-spacing: .3px; }
+      .box      { font-size: 15px; font-weight: 600; fill: #111827; }
+      .sub      { font-size: 11.5px; fill: #6b7280; }
+      .lbl      { font-size: 12px; font-weight: 600; fill: #374151; }
+      .lblblue  { font-size: 12px; font-weight: 600; fill: #2563eb; }
+      .lblpurple{ font-size: 12px; font-weight: 600; fill: #7c3aed; }
+      .cache    { font-size: 11px; font-weight: 700; fill: #b45309; }
+      .note     { font-size: 12px; fill: #4b5563; }
+      .legend   { font-size: 12px; fill: #4b5563; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="720" fill="#f9fafb"/>
+  <text x="40" y="44" class="title">Netflix on GraphQL — from device to data</text>
+  <text x="40" y="68" class="subtitle">One federated graph in front of many services. Clients ask for exactly what they need; the router fans the query out to the subgraphs that own each field.</text>
+
+  <!-- ============ CLIENTS ============ -->
+  <text x="40" y="118" class="group">CLIENTS</text>
+  <rect x="30" y="130" width="170" height="300" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <rect x="48" y="160" width="134" height="70" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="115" y="192" text-anchor="middle" class="box">Phone app</text>
+  <text x="115" y="212" text-anchor="middle" class="sub">iOS / Android</text>
+  <rect x="48" y="250" width="134" height="70" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="115" y="282" text-anchor="middle" class="box">TV app</text>
+  <text x="115" y="302" text-anchor="middle" class="sub">smart TV / console</text>
+  <rect x="48" y="340" width="134" height="70" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="115" y="372" text-anchor="middle" class="box">Web</text>
+  <text x="115" y="392" text-anchor="middle" class="sub">browser SPA</text>
+
+  <!-- clients -> edge -->
+  <line x1="200" y1="280" x2="252" y2="280" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="226" y="272" text-anchor="middle" class="lblblue">HTTP</text>
+
+  <!-- ============ EDGE ============ -->
+  <text x="256" y="118" class="group">EDGE</text>
+  <rect x="256" y="238" width="150" height="84" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="331" y="268" text-anchor="middle" class="box">CDN / Edge</text>
+  <text x="331" y="288" text-anchor="middle" class="sub">TLS, geo-routing</text>
+  <rect x="266" y="298" width="130" height="18" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="331" y="311" text-anchor="middle" class="cache">caches persisted GETs</text>
+
+  <line x1="406" y1="280" x2="428" y2="280" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <!-- ============ GATEWAY ============ -->
+  <text x="432" y="118" class="group">API GATEWAY</text>
+  <rect x="432" y="238" width="150" height="84" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="507" y="266" text-anchor="middle" class="box">API Gateway</text>
+  <text x="507" y="286" text-anchor="middle" class="sub">authn (JWT)</text>
+  <text x="507" y="303" text-anchor="middle" class="sub">rate-limit · WAF</text>
+
+  <line x1="582" y1="280" x2="614" y2="280" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="598" y="272" text-anchor="middle" class="lblblue">1 query</text>
+
+  <!-- ============ ROUTER ============ -->
+  <text x="620" y="118" class="group">GRAPHQL ROUTER</text>
+  <rect x="618" y="210" width="180" height="150" rx="12" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2.5"/>
+  <text x="708" y="248" text-anchor="middle" class="box">GraphQL Router</text>
+  <text x="708" y="270" text-anchor="middle" class="sub">the federated</text>
+  <text x="708" y="286" text-anchor="middle" class="sub">supergraph</text>
+  <rect x="632" y="300" width="152" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="708" y="319" text-anchor="middle" class="lblpurple">builds a query plan</text>
+  <text x="708" y="336" text-anchor="middle" class="sub">→ fans out to subgraphs</text>
+
+  <!-- router -> subgraphs -->
+  <path d="M798,250 C 850,250 850,175 892,175" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <path d="M798,285 C 850,285 850,285 892,285" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <path d="M798,320 C 850,320 850,395 892,395" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <text x="852" y="150" text-anchor="middle" class="lblpurple">sub-queries</text>
+
+  <!-- ============ SUBGRAPHS + DATA ============ -->
+  <text x="896" y="118" class="group">FEDERATED SUBGRAPHS — each owns schema + resolvers + data</text>
+  <rect x="884" y="130" width="292" height="330" rx="12" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+
+  <!-- Catalog -->
+  <rect x="900" y="146" width="180" height="64" rx="10" fill="#ffffff" stroke="#34d399" stroke-width="2"/>
+  <text x="990" y="174" text-anchor="middle" class="box">Catalog subgraph</text>
+  <text x="990" y="193" text-anchor="middle" class="sub">owns Show, Movie</text>
+  <line x1="1080" y1="178" x2="1104" y2="178" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <path d="M1112,170 v22 a20,6 0 0 0 40,0 v-22" fill="#ffffff" stroke="#34d399" stroke-width="1.5"/>
+  <ellipse cx="1132" cy="170" rx="20" ry="6" fill="#ffffff" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1132" y="200" text-anchor="middle" class="sub">DB</text>
+
+  <!-- Reviews -->
+  <rect x="900" y="256" width="180" height="64" rx="10" fill="#ffffff" stroke="#34d399" stroke-width="2"/>
+  <text x="990" y="284" text-anchor="middle" class="box">Reviews subgraph</text>
+  <text x="990" y="303" text-anchor="middle" class="sub">extends Show</text>
+  <line x1="1080" y1="288" x2="1104" y2="288" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <path d="M1112,280 v22 a20,6 0 0 0 40,0 v-22" fill="#ffffff" stroke="#34d399" stroke-width="1.5"/>
+  <ellipse cx="1132" cy="280" rx="20" ry="6" fill="#ffffff" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1132" y="310" text-anchor="middle" class="sub">DB</text>
+
+  <!-- Users -->
+  <rect x="900" y="366" width="180" height="64" rx="10" fill="#ffffff" stroke="#34d399" stroke-width="2"/>
+  <text x="990" y="394" text-anchor="middle" class="box">Users subgraph</text>
+  <text x="990" y="413" text-anchor="middle" class="sub">profiles, watchlist</text>
+  <line x1="1080" y1="398" x2="1104" y2="398" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <path d="M1112,390 v22 a20,6 0 0 0 40,0 v-22" fill="#ffffff" stroke="#34d399" stroke-width="1.5"/>
+  <ellipse cx="1132" cy="390" rx="20" ry="6" fill="#ffffff" stroke="#34d399" stroke-width="1.5"/>
+  <text x="1132" y="420" text-anchor="middle" class="sub">DB</text>
+
+  <!-- ============ CACHING BAND ============ -->
+  <rect x="30" y="490" width="1146" height="86" rx="12" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="48" y="516" class="cache" font-size="13">CACHING LAYERS (every hop can cache)</text>
+  <text x="48" y="540" class="note">• <tspan font-weight="700">Client</tspan>: normalized cache (Apollo Client)  &#160;&#160; • <tspan font-weight="700">Edge/CDN</tspan>: persisted-query GETs  &#160;&#160; • <tspan font-weight="700">Router</tspan>: response cache + @cacheControl hints</text>
+  <text x="48" y="560" class="note">• <tspan font-weight="700">Subgraph</tspan>: per-request DataLoader (batch + dedupe → kills N+1)  &#160;&#160; • <tspan font-weight="700">Data source</tspan>: the service's own cache (Redis, etc.)</text>
+
+  <!-- ============ LEGEND ============ -->
+  <text x="40" y="620" class="group">LEGEND</text>
+  <line x1="40" y1="640" x2="72" y2="640" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="80" y="644" class="legend">client → graph (GraphQL over HTTP)</text>
+  <line x1="320" y1="640" x2="352" y2="640" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <text x="360" y="644" class="legend">router → subgraph (planned sub-queries)</text>
+  <line x1="640" y1="640" x2="672" y2="640" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="680" y="644" class="legend">subgraph → data source (gRPC / REST / SQL)</text>
+
+  <text x="40" y="690" class="note">Key idea: the client sees <tspan font-weight="700">one</tspan> schema and sends <tspan font-weight="700">one</tspan> request. The router splits it across teams and stitches the results back — each team ships its slice independently.</text>
+</svg>

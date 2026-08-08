@@ -12,6 +12,7 @@ Each topic gets its own page as I write it up. This page is the map.
 
 {{< cards >}}
   {{< card link="grpc" title="gRPC" icon="chip" subtitle="RPC over HTTP/2 + Protocol Buffers." >}}
+  {{< card link="graphql" title="GraphQL" icon="share" subtitle="Client-specified queries + federation across services." >}}
 {{< /cards >}}
 
 {{< details title="Planned topics" closed="true" >}}
@@ -27,7 +28,6 @@ Each topic gets its own page as I write it up. This page is the map.
 
 ### L7 — Application protocols
 - **REST** — resources/verbs, idempotency, status codes, pagination
-- **GraphQL** — over/under-fetching, resolvers, N+1, persisted queries, federation
 - **HTTP evolution** — HTTP/1.1 → /2 (multiplexing, HPACK) → /3 (QUIC); keep-alive
 - **Realtime family** (the "how do I push to a client?" decision):
   - **SSE** — `EventSource`, reconnection, `Last-Event-ID`, proxy buffering gotchas
