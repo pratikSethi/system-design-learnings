@@ -1,0 +1,30 @@
+# Catalog subgraph schema (SDL — Schema Definition Language).
+# This file is the CONTRACT. Resolvers (see ../resolvers) provide the data for each field.
+# The Catalog team owns both this schema and its resolvers — they are two halves of one thing.
+
+"A movie or series in the Netflix catalog."
+type Show {
+  "Stable unique id. Will become the federation @key in a later step."
+  id: ID!
+  "Display title, e.g. \"Stranger Things\"."
+  title: String!
+  "Year the title was first released."
+  releaseYear: Int!
+  "MOVIE or SERIES."
+  kind: ShowKind!
+  "Maturity rating, e.g. \"TV-MA\", \"PG-13\"."
+  maturityRating: String!
+}
+
+"Whether a Show is a one-off movie or an episodic series."
+enum ShowKind {
+  MOVIE
+  SERIES
+}
+
+# The Query type is the entry point for reads — every top-level field here is a
+# question a client can ask. For step 1 we expose just one: the full list of shows.
+type Query {
+  "All shows in the catalog."
+  shows: [Show!]!
+}

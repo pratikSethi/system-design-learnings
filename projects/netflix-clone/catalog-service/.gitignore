@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build / TS output
+dist/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env
+.env
+.env.local
