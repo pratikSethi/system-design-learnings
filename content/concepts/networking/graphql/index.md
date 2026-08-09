@@ -163,6 +163,36 @@ So the fix is **batching**, not "embed everything." This is why these roadmap to
 cluster: **resolvers → N+1 → DataLoader → complexity limits** are all facets of "one query,
 many downstream calls."
 
+### How you detect it (predict, prevent, confirm)
+
+A fair question: as a developer, do you know N+1 is coming *ahead of time*, or only after a
+performance incident? Both — and mature teams shift it left.
+
+**The structural tell** — the earliest signal, visible while writing code: a **single-item
+fetch invoked inside a list field**. A data function shaped `findCastForShow(showId)`
+(singular, one id) called under `shows: [Show!]!` *must* run once per show. A batch-shaped
+`findCastForShows(showIds: [])` (plural, array) can't — the plural/singular shape of your
+fetch function is the tell.
+
+- **Predict (schema-design time).** Any field returning an object/list that's fetched from a
+  *separate source* is an N+1 candidate — `Show.cast` where `Person` lives in another
+  table/service. You can circle the risky edges by reading the schema.
+- **Prevent (review / lint / convention).** ESLint rules (`graphql-no-n-plus-one`-style,
+  graphql-eslint) flag a field resolver doing I/O without a loader; many shops just **mandate
+  DataLoader for any cross-source field** as policy, so N+1 is prevented rather than detected.
+- **Confirm (runtime — the real answer).** You *confirm and discover* it by observing execution:
+  - **Tracing / APM** (OpenTelemetry, Apollo traces, Datadog) — one request as a waterfall;
+    the `cast` span repeated 20× is unmistakable. The single most reliable signal.
+  - **DB / query logs** — `SELECT … WHERE show_id = ?` logged 20× with different ids; slow-query
+    logs and `pg_stat_statements` surface "same query shape, huge call count."
+  - **Metrics** — latency that **scales with result-set size** (p99 climbs as a list grows) is a
+    classic N+1 fingerprint.
+
+> **The trap:** N+1 is *invisible at small data sizes*. With 3 shows it's 4 fast calls and feels
+> fine; with a 200-item list it's 201 calls and p99 falls over. That's why latency-scales-with-
+> list-size is the fingerprint, why load tests catch what dev misses, and why simulating
+> per-call latency (as this project does) makes the cost visible *before* production.
+
 ### The honest tradeoff
 
 GraphQL doesn't *remove* the complexity of fetching from many places — it **relocates** it.

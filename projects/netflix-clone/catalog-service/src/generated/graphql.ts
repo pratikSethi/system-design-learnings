@@ -12,6 +12,15 @@ export type Scalars = {
   Float: { input: number; output: number; }
 };
 
+/** A person in a show's cast. Lives in a separate data source (a People/Talent service in prod). */
+export type Person = {
+  __typename?: 'Person';
+  /** Stable unique id. */
+  id: Scalars['ID']['output'];
+  /** Full name, e.g. "Millie Bobby Brown". */
+  name: Scalars['String']['output'];
+};
+
 export type Query = {
   __typename?: 'Query';
   /** A single show by id, or null if none matches. Nullable return = the lookup may miss. */
@@ -28,6 +37,8 @@ export type QueryShowArgs = {
 /** A movie or series in the Netflix catalog. */
 export type Show = {
   __typename?: 'Show';
+  /** The cast of this show. Fetched from a separate data source per show — the N+1 candidate. */
+  cast: Array<Person>;
   /** Stable unique id. Will become the federation @key in a later step. */
   id: Scalars['ID']['output'];
   /** MOVIE or SERIES. */
@@ -121,6 +132,7 @@ export type ResolversTypes = {
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
+  Person: ResolverTypeWrapper<Person>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Show: ResolverTypeWrapper<ShowMapper>;
   ShowKind: ShowKind;
@@ -132,9 +144,15 @@ export type ResolversParentTypes = {
   Boolean: Scalars['Boolean']['output'];
   ID: Scalars['ID']['output'];
   Int: Scalars['Int']['output'];
+  Person: Person;
   Query: Record<PropertyKey, never>;
   Show: ShowMapper;
   String: Scalars['String']['output'];
+};
+
+export type PersonResolvers<ContextType = any, ParentType extends ResolversParentTypes['Person'] = ResolversParentTypes['Person']> = {
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type QueryResolvers<ContextType = any, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
@@ -143,6 +161,7 @@ export type QueryResolvers<ContextType = any, ParentType extends ResolversParent
 };
 
 export type ShowResolvers<ContextType = any, ParentType extends ResolversParentTypes['Show'] = ResolversParentTypes['Show']> = {
+  cast?: Resolver<Array<ResolversTypes['Person']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['ShowKind'], ParentType, ContextType>;
   maturityRating?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -151,6 +170,7 @@ export type ShowResolvers<ContextType = any, ParentType extends ResolversParentT
 };
 
 export type Resolvers<ContextType = any> = {
+  Person?: PersonResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   Show?: ShowResolvers<ContextType>;
 };

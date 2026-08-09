@@ -14,6 +14,16 @@ type Show {
   kind: ShowKind!
   "Maturity rating, e.g. \"TV-MA\", \"PG-13\"."
   maturityRating: String!
+  "The cast of this show. Fetched from a separate data source per show — the N+1 candidate."
+  cast: [Person!]!
+}
+
+"A person in a show's cast. Lives in a separate data source (a People/Talent service in prod)."
+type Person {
+  "Stable unique id."
+  id: ID!
+  "Full name, e.g. \"Millie Bobby Brown\"."
+  name: String!
 }
 
 "Whether a Show is a one-off movie or an episodic series."
