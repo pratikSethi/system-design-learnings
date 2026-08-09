@@ -252,6 +252,37 @@ So `shows: [Show!]!` is a real contract: *always* a list, every element a real `
 `show(id: ID!): Show` is deliberately the opposite — a lookup **may miss**, so the return is
 nullable (`Show`, not `Show!`).
 
+### Two models: data (entity) vs API (DTO) — the Spring analogy
+
+_(draft — from the project; clicks if you've done layered services)_
+
+A common confusion: there are **two** `Show` types in a typed GraphQL server, and that's on
+purpose. It's the same entity-vs-DTO split as a Spring/JPA service:
+
+| Spring / JPA | GraphQL (this project) | Role |
+|---|---|---|
+| `@Entity` / DAO | `data/shows.ts` → `Show` | persistence/domain model — what the backend **stores** |
+| response **DTO** | generated `Show` (from SDL) | API contract — what clients **see** |
+| MapStruct / manual mapper | codegen **`mappers`** + **field resolvers** | translation between the two |
+
+The clean framing:
+
+> **entity (`data/shows.ts`) → DTO (generated from SDL), bridged by resolvers.** Fields that
+> match by name **auto-map for free** (the default resolver just reads the property); fields
+> that differ get a **field resolver** — *that function is your hand-written mapping* for that
+> one field. GraphQL's **`input` types** are the request-DTO side.
+
+Request vs response, in GraphQL terms:
+
+- **Response DTO** (data going *out*) → generated **object types** like `Show`. The entity's counterpart.
+- **Request DTO** (data coming *in*) → **`input` types**. Add a mutation `rateShow(input: RateShowInput!)`
+  and codegen generates a `RateShowInput` TS type — that's your request model.
+
+So GraphQL *enforces* the request/response DTO split (`type` out, `input` in — you can't swap
+them), and codegen emits a TS type for each side. Keep the two `Show`s separate for the same
+reason you didn't return JPA entities straight from a controller: the moment the shapes diverge
+(DB has `castIds`; API exposes `cast: [Person!]`), the seam is already there.
+
 ## Federation (the endgame)
 
 - **Why federate** — one graph, many teams shipping independently; no monolithic schema, no central resolver bottleneck.

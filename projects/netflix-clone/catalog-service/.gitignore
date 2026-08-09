@@ -5,6 +5,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# NOTE: codegen output (src/generated/) is intentionally NOT ignored — we commit it
+# so a fresh clone works without a codegen step. Trade-off: it appears in every PR
+# diff, and can drift from the schema if someone edits shows.graphql without re-running
+# `npm run codegen`. (Alternative: gitignore it + a prestart/predev codegen hook.)
+
 # Logs
 *.log
 npm-debug.log*

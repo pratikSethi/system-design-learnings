@@ -11,16 +11,21 @@
 // "default resolver": it simply reads the property of the same name off the returned
 // object. That's why returning the plain Show objects from data/ is enough.
 
+import type { Resolvers } from "../generated/graphql.js";
 import { findAllShows, findShowById } from "../data/shows.js";
 
-export const resolvers = {
+// `Resolvers` is generated from the SDL (npm run codegen). Typing the map with it
+// means TypeScript checks every resolver AGAINST the schema: field names, argument
+// types, and return types must match shows.graphql — no more hand-written arg types
+// that can silently drift. Change the schema, re-run codegen, and mismatches become
+// compile errors here.
+export const resolvers: Resolvers = {
   Query: {
     // (parent, args, context, info) — none needed yet for a plain list.
     shows: () => findAllShows(),
 
-    // The SECOND positional param is `args` — the arguments from the query.
-    // For `show(id: ID!)`, args.id holds the id the client passed.
-    // Returning undefined/null is fine here: the schema's return type is nullable (Show, not Show!).
-    show: (_parent: unknown, args: { id: string }) => findShowById(args.id),
+    // `args` is now typed from the schema (QueryShowArgs → { id: string }); we didn't
+    // write that shape by hand. Nullable return is allowed because the SDL says `Show`, not `Show!`.
+    show: (_parent, args) => findShowById(args.id) ?? null,
   },
 };

@@ -80,11 +80,45 @@ curl -s http://localhost:4001/ -H 'content-type: application/json' \
 
 ---
 
+## Type safety (GraphQL Code Generator)
+
+Resolvers are type-checked **against the schema**. [GraphQL Code Generator](https://the-guild.dev/graphql/codegen)
+reads `src/schema/*.graphql` and emits TypeScript types into `src/generated/graphql.ts`; the
+resolver map is typed with the generated `Resolvers` type, so field names, argument types, and
+return types must match the SDL — change the schema and mismatches become compile errors.
+
+```bash
+npm run codegen        # generate src/generated/graphql.ts from the schema
+npm run codegen:watch  # regenerate on schema change while developing
+```
+
+Config lives in [`codegen.ts`](codegen.ts). Key options: `mappers` (the schema `Show` maps to
+the data-layer `data/shows.ts#Show` — see the entity-vs-DTO note in the site), `mapperTypeSuffix`
+(imports it as `ShowMapper` to avoid a name clash), and `useTypeImports` (required by our strict
+`verbatimModuleSyntax`).
+
+> **We commit `src/generated/`** (it is *not* git-ignored) so a fresh clone runs without a codegen
+> step. Trade-off: the generated file shows up in every PR diff, and can **drift** from the schema
+> if someone edits `shows.graphql` without re-running `npm run codegen`. The alternative is to
+> git-ignore it and add a `prestart`/`predev` codegen hook — revisit if drift becomes a problem.
+
+---
+
 ## Type-check
 
 ```bash
-npm run typecheck     # tsc --noEmit
+npm run typecheck     # tsc --noEmit  (also validates resolvers against generated types)
 ```
+
+---
+
+## TODOs / revisit later
+
+- **Add a production `build` step.** Today the server runs from source via `tsx` (`dev`/`start`),
+  which transpiles on the fly and does **not** type-check at runtime. For a production-style run
+  we'd add `"build": "tsc"` → emit to `dist/`, and start with `node dist/index.js`. Pieces are
+  already in place (`tsconfig.json`, `dist/` git-ignored). Deferred until the deployment phase —
+  not a current priority.
 
 ---
 
@@ -93,11 +127,13 @@ npm run typecheck     # tsc --noEmit
 ```
 catalog-service/
   .npmrc                     # public npm registry (this folder only)
-  package.json               # Apollo Server 4 + graphql; tsx + typescript (dev)
+  package.json               # Apollo Server 4 + graphql; tsx + typescript + codegen (dev)
   tsconfig.json              # strict TS, ESM (NodeNext)
+  codegen.ts                 # GraphQL Code Generator config (schema → TS types)
   src/
-    schema/shows.graphql     # the SDL contract: type Show, enum ShowKind, Query.shows
-    data/shows.ts            # fake in-memory data source (the swap-later seam)
-    resolvers/index.ts       # Query.shows → findAllShows()  (thin delegation)
+    schema/shows.graphql     # the SDL contract: type Show, enum ShowKind, Query.{shows,show}
+    data/shows.ts            # fake in-memory data source (the swap-later seam); the "entity"
+    resolvers/index.ts       # Query resolvers, typed with generated `Resolvers` (thin delegation)
+    generated/graphql.ts     # GENERATED from the schema (committed); the API "DTO" types
     index.ts                 # loads SDL + resolvers, starts server + Sandbox on :4001
 ```
