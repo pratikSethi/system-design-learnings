@@ -34,7 +34,7 @@ Users) each become a **subgraph**, and a **router** stitches them into one graph
 |---|---|---|---|
 | **1** | `catalog-service`: `shows` query → fake in-memory data + Apollo Sandbox playground | schema, resolver, how a query resolves | ✅ done |
 | **2** | `show(id)` query (arguments) + **GraphQL Code Generator** for end-to-end type safety | field arguments; schema-derived TS types (no drift) | ✅ done |
-| **3** | Swap the fake array for a real data source (gRPC/REST backend) | resolver = thin delegation; the **N+1 problem** + **DataLoader** | ⬜ planned |
+| **3** | Async data source + a `cast` field → the **N+1 problem**, then **DataLoader** | resolver = thin delegation; N+1, batching, per-request `context`; joins as an alternative | ✅ done |
 | **4** | Add a `reviews` subgraph that `extend`s `Show`, put a **Router** in front | **federation** — `@key`, entity resolution, schema composition | ⬜ planned |
 | **5** | Build-time vs runtime composition; schema registry + composition/breaking-change checks | federation **tooling** & why it's the industry standard | ⬜ planned |
 

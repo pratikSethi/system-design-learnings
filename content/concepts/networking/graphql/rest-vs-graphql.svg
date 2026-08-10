@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4b5563"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#059669"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <style>
+      .title    { font-size: 25px; font-weight: 700; fill: #111827; }
+      .subtitle { font-size: 14px; fill: #6b7280; }
+      .panel    { font-size: 16px; font-weight: 700; }
+      .box      { font-size: 14px; font-weight: 600; fill: #111827; }
+      .sub      { font-size: 11px; fill: #6b7280; }
+      .lbl      { font-size: 11.5px; font-weight: 600; fill: #374151; }
+      .lblred   { font-size: 12px; font-weight: 700; fill: #dc2626; }
+      .lblgreen { font-size: 12px; font-weight: 700; fill: #059669; }
+      .net      { font-size: 11px; font-weight: 700; fill: #9ca3af; letter-spacing:.3px; }
+      .note     { font-size: 11.5px; fill: #4b5563; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="660" fill="#f9fafb"/>
+  <text x="40" y="42" class="title">Before vs after GraphQL — building one screen</text>
+  <text x="40" y="66" class="subtitle">A Netflix-style home screen with three sections, each backed by its own service.</text>
+
+  <!-- ===================== LEFT: REST ===================== -->
+  <rect x="30" y="90" width="560" height="520" rx="12" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
+  <text x="52" y="120" class="panel" fill="#b91c1c">✗ Without GraphQL — REST</text>
+
+  <!-- client -->
+  <rect x="200" y="140" width="220" height="58" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="310" y="165" text-anchor="middle" class="box">Netflix home screen</text>
+  <text x="310" y="184" text-anchor="middle" class="sub">phone / TV — needs 3 sections</text>
+
+  <!-- public internet band -->
+  <rect x="52" y="230" width="516" height="34" rx="8" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="310" y="252" text-anchor="middle" class="net">↕ PUBLIC INTERNET — slow, unreliable (cellular)</text>
+
+  <!-- 3 REST calls -->
+  <line x1="180" y1="198" x2="128" y2="330" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <line x1="310" y1="198" x2="310" y2="330" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <line x1="440" y1="198" x2="492" y2="330" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <text x="310" y="300" text-anchor="middle" class="lblred">3 separate round-trips</text>
+
+  <!-- 3 services -->
+  <rect x="60"  y="332" width="140" height="70" rx="10" fill="#ffffff" stroke="#fca5a5" stroke-width="2"/>
+  <text x="130" y="360" text-anchor="middle" class="box" font-size="13">Profile API</text>
+  <text x="130" y="378" text-anchor="middle" class="sub">/profile</text>
+  <text x="130" y="393" text-anchor="middle" class="sub">full payload</text>
+
+  <rect x="240" y="332" width="140" height="70" rx="10" fill="#ffffff" stroke="#fca5a5" stroke-width="2"/>
+  <text x="310" y="360" text-anchor="middle" class="box" font-size="13">Top Shows API</text>
+  <text x="310" y="378" text-anchor="middle" class="sub">/top-shows</text>
+  <text x="310" y="393" text-anchor="middle" class="sub">full payload</text>
+
+  <rect x="420" y="332" width="140" height="70" rx="10" fill="#ffffff" stroke="#fca5a5" stroke-width="2"/>
+  <text x="490" y="356" text-anchor="middle" class="box" font-size="13">Recommend-</text>
+  <text x="490" y="372" text-anchor="middle" class="box" font-size="13">ations API</text>
+  <text x="490" y="392" text-anchor="middle" class="sub">full payload</text>
+
+  <!-- cost note -->
+  <rect x="60" y="440" width="500" height="140" rx="10" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="80" y="466" class="lblred">The costs</text>
+  <text x="80" y="490" class="note">• <tspan font-weight="700">Under-fetch → 3 round-trips</tspan> over the slow leg (client stitches results)</text>
+  <text x="80" y="514" class="note">• <tspan font-weight="700">Over-fetch</tspan> — each endpoint returns fixed, larger-than-needed payloads</text>
+  <text x="80" y="538" class="note">• More bytes + more latency on exactly the worst (mobile) network</text>
+  <text x="80" y="562" class="note">• Client hand-assembles the screen from 3 differently-shaped responses</text>
+
+  <!-- ===================== RIGHT: GraphQL ===================== -->
+  <rect x="610" y="90" width="560" height="520" rx="12" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="632" y="120" class="panel" fill="#047857">✓ With GraphQL — one call (BFF)</text>
+
+  <!-- client -->
+  <rect x="780" y="140" width="220" height="58" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="890" y="165" text-anchor="middle" class="box">Netflix home screen</text>
+  <text x="890" y="184" text-anchor="middle" class="sub">phone / TV — asks for exact fields</text>
+
+  <!-- public internet band -->
+  <rect x="632" y="230" width="516" height="34" rx="8" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="890" y="252" text-anchor="middle" class="net">↕ PUBLIC INTERNET — ONE round-trip, only requested fields</text>
+
+  <!-- single call -->
+  <line x1="890" y1="198" x2="890" y2="292" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+  <text x="960" y="222" text-anchor="middle" class="lbl" fill="#2563eb">1 query</text>
+
+  <!-- GraphQL BFF -->
+  <rect x="770" y="294" width="240" height="56" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2.5"/>
+  <text x="890" y="318" text-anchor="middle" class="box">GraphQL (BFF)</text>
+  <text x="890" y="336" text-anchor="middle" class="sub">resolves the requested fields</text>
+
+  <!-- datacenter band -->
+  <rect x="632" y="372" width="516" height="150" rx="10" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1.2"/>
+  <text x="890" y="392" text-anchor="middle" class="net" fill="#059669">DATACENTER / VPC — fast, reliable (sub-ms hops)</text>
+
+  <!-- 3 internal calls -->
+  <line x1="820" y1="350" x2="712" y2="430" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <line x1="890" y1="350" x2="890" y2="430" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <line x1="960" y1="350" x2="1068" y2="430" stroke="#059669" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <rect x="648" y="432" width="128" height="66" rx="9" fill="#ffffff" stroke="#34d399" stroke-width="1.8"/>
+  <text x="712" y="458" text-anchor="middle" class="box" font-size="12.5">Profile</text>
+  <text x="712" y="476" text-anchor="middle" class="sub">REST</text>
+
+  <rect x="826" y="432" width="128" height="66" rx="9" fill="#ffffff" stroke="#34d399" stroke-width="1.8"/>
+  <text x="890" y="458" text-anchor="middle" class="box" font-size="12.5">Top Shows</text>
+  <text x="890" y="476" text-anchor="middle" class="sub">gRPC / RPC</text>
+
+  <rect x="1004" y="432" width="128" height="66" rx="9" fill="#ffffff" stroke="#34d399" stroke-width="1.8"/>
+  <text x="1068" y="458" text-anchor="middle" class="box" font-size="12.5">Recommend.</text>
+  <text x="1068" y="476" text-anchor="middle" class="sub">DB / service</text>
+
+  <!-- win note -->
+  <rect x="648" y="536" width="484" height="52" rx="10" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="668" y="558" class="note"><tspan font-weight="700" fill="#047857">Client win:</tspan> one round-trip over the slow leg; only requested</text>
+  <text x="668" y="576" class="note">fields on the wire. The fan-out still happens — but in-datacenter, where it's cheap.</text>
+</svg>

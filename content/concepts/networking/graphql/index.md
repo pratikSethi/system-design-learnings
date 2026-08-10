@@ -3,8 +3,9 @@ title: GraphQL
 ---
 
 A query language for APIs where the **client** specifies exactly what data it wants, and a
-single request can pull from many backends. Paired here with **federation** — the way large
-orgs (Netflix, etc.) run one graph across many independently-owned services.
+single request can pull from many backends. This note starts from the basics and builds up to
+**federation** — the way large orgs (Netflix, etc.) run one graph across many
+independently-owned services.
 
 {{< callout type="info" >}}
 This note grows alongside a hands-on project in the repo:
@@ -12,105 +13,168 @@ This note grows alongside a hands-on project in the repo:
 (Catalog first, then Reviews, then a Router). Diagrams below map 1:1 to what we build.
 {{< /callout >}}
 
-What you actually interact with while developing — the **Apollo Sandbox** playground: schema
-explorer on the left, your query in the middle, the live JSON response on the right (note the
-`200 · 105ms · 400B` stats). This is the catalog subgraph from the project answering
-`shows { cast { name } title }`:
+## What is GraphQL, and why does it exist?
+
+GraphQL came out of **Facebook (2012, open-sourced 2015)**. The problem it targeted: their
+mobile apps were making **many REST calls** to paint a single screen, over slow, unreliable
+mobile networks — and each call returned **more data than the screen needed**. Two classic
+pains of REST:
+
+- **Under-fetching** — one endpoint doesn't have everything a screen needs, so the client
+  makes *several* round-trips and stitches the results together.
+- **Over-fetching** — an endpoint returns a *fixed* payload, usually more fields than this
+  particular screen uses. Wasted bytes on the wire.
+
+Picture a Netflix-style home screen with three sections — **profile**, **top shows**,
+**recommendations** — each owned by a different service:
+
+![Before vs after GraphQL: on the left, a client makes 3 separate REST round-trips over the slow public internet, each returning a full fixed payload (under-fetch + over-fetch); on the right, the client makes 1 GraphQL request over the internet asking for exact fields, and the GraphQL layer (a backend-for-frontend) fans out to Profile, Top Shows, and Recommendations services inside the fast datacenter/VPC](rest-vs-graphql.svg)
+
+*Left: 3 round-trips over the slow leg, each over-fetching. Right: 1 request for exactly the fields needed; the fan-out moves inside the datacenter.*
+
+**With GraphQL, the client sends one request for exactly the fields it needs.** Behind the
+scenes, GraphQL acts as a **backend-for-frontend (BFF)**: to fill those fields it still has to
+fetch the data — a REST call here, an RPC call there, a database read — but those calls happen
+**inside your datacenter / VPC**, where hops are fast and reliable (sub-millisecond),
+*not* over the public internet.
+
+That's the core win:
+
+> The expensive, unreliable network leg (client → server) is crossed **once**, carrying
+> **only the requested fields**. The fan-out to many backends still happens, but on the fast
+> internal network. Fewer round-trips + less data on the wire = quicker page loads and lower
+> latency, especially on flaky mobile connections.
+
+### Who uses it, and when it fits
+
+- **Where it shines:** client-facing apps that assemble a screen from **many backends** and run
+  on **varied clients** (phone, TV, web) with different data needs — Facebook, Netflix, GitHub,
+  Shopify. A flexible, precise aggregation layer is exactly the job.
+- **Where it's overkill:** a simple CRUD service with one consumer and one data source — plain
+  REST is simpler. GraphQL earns its keep when *aggregation* and *client flexibility* matter.
+
+### What the tooling looks like
+
+You develop against a **playground** — here, **Apollo Sandbox**: schema explorer on the left,
+your query in the middle, the live JSON response on the right (note the `200 · 105ms · 400B`
+stats). This is the project's catalog subgraph answering `shows { cast { name } title }`:
 
 ![Apollo Sandbox playground at localhost:4001: left pane shows the schema Documentation explorer for the shows query and Show type fields (title, releaseYear, cast: [Person!]!); middle pane shows the query { shows { cast { name } title } }; right pane shows the JSON response listing each show's cast and title, with 200/105ms/400B stats](apollo_graphql_playground.png)
 
-*The catalog subgraph in Apollo Sandbox — browse the schema, write a query with autocomplete, run it, and get back exactly the fields you asked for.*
+*Browse the schema, write a query with autocomplete, run it, and get back exactly the fields
+you asked for.*
 
-## The shape of a production GraphQL system
+## The basics: operations & the type system
 
-Before any syntax, the big picture. A client (phone, TV, web) sends **one** GraphQL query.
-It rides HTTP through the edge and an API gateway to a **router**, which owns the combined
-("federated") schema. The router figures out which backend services own which fields, fans
-the query out to them, and stitches the results back into one response.
+### The three operation types
 
-![High-level architecture: phone/TV/web clients send one GraphQL query through CDN and API gateway to a federated GraphQL router, which fans out planned sub-queries to Catalog, Reviews, and Users subgraphs, each owning its own data source; caching happens at every hop](architecture-overview.svg)
+A GraphQL schema has up to three **root** entry points — ordinary object types GraphQL treats
+specially:
 
-*The whole system at a glance. We build it right-to-left: first a single Catalog subgraph, then Reviews extending it, then the Router in front.*
+- **`Query`** — reads (the `shows`/`show` fields in our project).
+- **`Mutation`** — writes (create/update/delete).
+- **`Subscription`** — a stream of events pushed over time (realtime; WebSocket / SSE).
 
-The one idea to hold onto:
+### The type system
 
-> The client sees **one** schema and sends **one** request. Each field is resolved by the
-> team that owns it. GraphQL is a **composition / presentation layer** — the real data
-> lives in services behind it (gRPC/REST + databases).
+_(draft — grows as the project adds a Mutation, input filters, an interface)_
 
-## Where GraphQL fits in a microservices architecture
+**Mental model:** **scalars & enums** are *leaves* (actual values); **objects, interfaces,
+unions** are *branches* (you select sub-fields on them); **input types** are data going *in*
+(arguments); **`!` and `[]`** are modifiers layered on any of them.
 
-The natural question once you see the diagram: *does every service become a GraphQL
-subgraph, and does all service-to-service traffic now route through the router?* **No on
-both counts** — and getting this right is most of the intuition.
+**Scalars** — the leaf values, can't be drilled into. Five built-in:
 
-### A subgraph is a *domain boundary*, not a microservice
+| Scalar | Holds | In `shows.graphql` |
+|---|---|---|
+| `Int` | 32-bit signed integer | `releaseYear: Int!` |
+| `Float` | double-precision float | — |
+| `String` | UTF-8 text | `title: String!` |
+| `Boolean` | `true` / `false` | — |
+| `ID` | opaque unique key — serialized as a String, but "don't do math on it" | `id: ID!` |
 
-The dividing line for "should this be a subgraph?" is **not** client-facing vs internal.
-It's:
+You can define **custom scalars** too (`scalar DateTime`, `scalar URL`) with serialize/parse
+logic in code — common for dates/emails.
 
-> **Does this service own data/fields that belong in the client-facing graph?**
+**Object type** — a named set of fields; the workhorse (`type Show { … }`).
 
-And crucially:
+**Enum** — a closed set of named values (`enum ShowKind { MOVIE SERIES }`); anything else is
+a validation error.
 
-> A subgraph is a **domain boundary, not necessarily one microservice**. A domain (say
-> Catalog) may be backed by **several** internal microservices, with **one** subgraph in
-> front exposing the slice of them that clients need. So it's not "every client-facing
-> service is its own subgraph" — it's "each domain publishes **one** subgraph, which may
-> sit atop many services."
+**Interface** — shared fields several objects implement; a field can return the interface and
+clients pick concrete fields via `... on Show { … }`.
 
-So the graph is a **shallow aggregation layer** — a handful of domains (Catalog, Reviews,
-Users, maybe Search) publish subgraphs, each fronting a whole domain.
-
-### The router is a front door, not a service bus
-
-The router does exactly one job: take a client query, split it across the subgraphs that
-own the requested fields, stitch the results. It is **not** a general message bus. Backend
-services still talk to each other **directly** — gRPC, REST, events — for everything that
-isn't "a client asked for these fields."
-
-```text
-CLIENT-DRIVEN (through the router):        SERVICE-TO-SERVICE (direct, no router):
-  client → router → Catalog subgraph         Playback ──gRPC──► Licensing
-                 └→ Reviews subgraph          Recommendations ──gRPC──► Catalog
-                                              Billing ──event──► Notifications
+```graphql
+interface Media { id: ID!  title: String! }
+type Show implements Media { id: ID!  title: String!  kind: ShowKind! }
 ```
 
-Routing internal calls through the router would add a latency + failure hop on the client
-critical path, force internal calls through the *public* schema shape, and couple every
-interaction to the router's availability. So **gRPC service-to-service traffic doesn't go
-away** — it stays peer-to-peer (mesh territory: the L4/L7 balancing, xDS, deadlines from
-the [gRPC note](../grpc/)). gRPC lives in two places: the subgraph speaks GraphQL *upward*
-to the router, and often gRPC *sideways/downward* to peer services and its own data.
+**Union** — "one of these types, sharing **no** common fields" — e.g. `union SearchResult = Show | Person | Collection`. Clients select per-type with inline fragments.
 
-### The iceberg: what stays internal
+**Input type** — a special object used **only for arguments** (you can't pass a regular
+`type` as an argument). Pure data-in:
 
-The graph is a thin slice near the top; most services sit below it and never see a client
-query. For a Netflix-shaped app:
+```graphql
+input ShowFilter { kind: ShowKind  releasedAfter: Int }
+type Query { shows(filter: ShowFilter): [Show!]! }
+```
 
-- **Behind a subgraph** (a resolver calls these over gRPC): licensing / DRM rights, the
-  encoding/transcoding pipeline, personalization & ranking (ML), artwork selection.
-- **Never near the graph** (own data planes): Open Connect CDN (serves the actual video
-  bytes), playback session / adaptive-bitrate control, the telemetry & event pipeline
-  (billions of QoE events), the data/ML training platform, billing & payments,
-  experimentation, fraud detection.
+**Modifiers — `!` (non-null) and `[]` (list).** Separate from *what kind* a type is. The
+list + non-null combinations mean different things, and this is the part worth pinning down:
 
-Some client paths also **bypass the graph entirely**: the video bytes come from the CDN
-(GraphQL only hands back the manifest/URLs), and playback telemetry is fire-and-forget
-events — not graph mutations. The graph is for **structured, read-heavy, aggregation-shaped**
-client data, where "give me exactly these fields across these domains in one trip" is the win.
+```graphql
+[Show]     # list may be null; items may be null
+[Show!]    # list may be null; no null items inside
+[Show!]!   # list never null (at least []), no null items   ← our `shows`
+[Show]!    # list never null; but items may be null
+```
 
-{{< callout type="info" >}}
-**Why this matters:** federation unifies the *few* client-facing domains without forcing
-the deep iceberg of internal services into one schema. GraphQL federation and a large
-internal gRPC/event fabric coexist by design.
-{{< /callout >}}
+So `shows: [Show!]!` is a real contract: *always* a list, every element a real `Show`.
+`show(id: ID!): Show` is deliberately the opposite — a lookup **may miss**, so the return is
+nullable (`Show`, not `Show!`).
+
+## Resolvers
+
+A **resolver** is the function behind a field — it produces that field's data. A resolver map
+mirrors the schema's shape: for each type, field-name → function. Key idea: a resolver is
+**thin** — it *delegates* to a data source and returns plain data; it doesn't hold business
+logic or talk to a DB directly. Fields with no explicit resolver use a **default resolver**
+(read the property of the same name off the parent object).
+
+### Two models: data (entity) vs API (DTO) — the Spring analogy
+
+_(draft — from the project; clicks if you've done layered services)_
+
+A common confusion: there are **two** `Show` types in a typed GraphQL server, and that's on
+purpose. It's the same entity-vs-DTO split as a Spring/JPA service:
+
+| Spring / JPA | GraphQL (this project) | Role |
+|---|---|---|
+| `@Entity` / DAO | `data/shows.ts` → `Show` | persistence/domain model — what the backend **stores** |
+| response **DTO** | generated `Show` (from SDL) | API contract — what clients **see** |
+| MapStruct / manual mapper | codegen **`mappers`** + **field resolvers** | translation between the two |
+
+The clean framing:
+
+> **entity (`data/shows.ts`) → DTO (generated from SDL), bridged by resolvers.** Fields that
+> match by name **auto-map for free** (the default resolver just reads the property); fields
+> that differ get a **field resolver** — *that function is your hand-written mapping* for that
+> one field. GraphQL's **`input` types** are the request-DTO side.
+
+Request vs response, in GraphQL terms:
+
+- **Response DTO** (data going *out*) → generated **object types** like `Show`. The entity's counterpart.
+- **Request DTO** (data coming *in*) → **`input` types**. Add a mutation `rateShow(input: RateShowInput!)`
+  and codegen generates a `RateShowInput` TS type — that's your request model.
+
+So GraphQL *enforces* the request/response DTO split (`type` out, `input` in — you can't swap
+them), and codegen emits a TS type for each side. Keep the two `Show`s separate for the same
+reason you didn't return JPA entities straight from a controller: the moment the shapes diverge
+(DB has `castIds`; API exposes `cast: [Person!]`), the seam is already there.
 
 ## One client query → many downstream calls
 
-_(draft — captured while fresh; refine when we build step 3)_
-
-A **single** client query hitting a **single** subgraph can explode into many downstream
+A **single** client query hitting a **single** service can explode into many downstream
 calls (gRPC / HTTP / SQL). Two multipliers stack:
 
 **1. Breadth — fields fan out to different backends.** One `Show` may need several services;
@@ -195,7 +259,7 @@ DataLoader's **dedup cache**, **cap concurrency** (e.g. `p-limit`) to survive th
 **cache responses** across requests. "Does this source support multi-key fetch?" is a question
 you ask when designing a resolver.
 
-So the fix is **batching**, not "embed everything." This is why these roadmap topics
+So the fix is **batching**, not "embed everything." This is why these topics
 cluster: **resolvers → N+1 → DataLoader → complexity limits** are all facets of "one query,
 many downstream calls."
 
@@ -280,108 +344,84 @@ Defenses: DataLoader (batch N+1), query **depth/complexity limits** (reject an e
 query before running it), **pagination** (never unbounded lists), and **per-backend
 timeouts** (one slow downstream can't hang the whole query).
 
-## Core concepts
+## The distributed graph: where GraphQL sits in a system
 
-_(sections filled in as the project progresses — this is the map)_
+Zoom out from one service. In production, a client (phone, TV, web) sends **one** GraphQL query.
+It rides HTTP through the edge and an API gateway to a **router**, which owns the combined
+("federated") schema. The router figures out which backend services own which fields, fans
+the query out to them, and stitches the results back into one response.
 
-- **Schema & types** — [the type system](#the-type-system) (written below).
-- **Resolvers** — the function behind every field; how a query tree resolves; `context` (auth, loaders); why a resolver is *thin delegation*, not business logic.
-- **Over- / under-fetching** — the REST problem GraphQL targets: one round-trip, exactly the fields asked for.
-- **The N+1 problem & DataLoader** — the sharp edge; per-request batching + caching.
-- **Pagination** — offset vs cursor; the Relay **connections** spec (`edges`/`node`/`pageInfo`).
-- **Errors** — partial success (`data` + `errors`), error masking, and why HTTP is usually `200`.
+![High-level architecture: phone/TV/web clients send one GraphQL query through CDN and API gateway to a federated GraphQL router, which fans out planned sub-queries to Catalog, Reviews, and Users subgraphs, each owning its own data source; caching happens at every hop](architecture-overview.svg)
 
-### The type system
+*The whole system at a glance. The project builds it right-to-left: first a single Catalog subgraph, then Reviews extending it, then the Router in front.*
 
-_(draft — grows as the project adds a Mutation, input filters, an interface)_
+The one idea to hold onto:
 
-**Mental model:** **scalars & enums** are *leaves* (actual values); **objects, interfaces,
-unions** are *branches* (you select sub-fields on them); **input types** are data going *in*
-(arguments); **`!` and `[]`** are modifiers layered on any of them.
+> The client sees **one** schema and sends **one** request. Each field is resolved by the
+> team that owns it. GraphQL is a **composition / presentation layer** — the real data
+> lives in services behind it (gRPC/REST + databases).
 
-**Scalars** — the leaf values, can't be drilled into. Five built-in:
+### Where GraphQL fits in a microservices architecture
 
-| Scalar | Holds | In `shows.graphql` |
-|---|---|---|
-| `Int` | 32-bit signed integer | `releaseYear: Int!` |
-| `Float` | double-precision float | — |
-| `String` | UTF-8 text | `title: String!` |
-| `Boolean` | `true` / `false` | — |
-| `ID` | opaque unique key — serialized as a String, but "don't do math on it" | `id: ID!` |
+The natural question once you see the diagram: *does every service become a GraphQL
+subgraph, and does all service-to-service traffic now route through the router?* **No on
+both counts** — and getting this right is most of the intuition.
 
-You can define **custom scalars** too (`scalar DateTime`, `scalar URL`) with serialize/parse
-logic in code — common for dates/emails.
+**A subgraph is a *domain boundary*, not a microservice.** The dividing line for "should this
+be a subgraph?" is **not** client-facing vs internal. It's:
 
-**Object type** — a named set of fields; the workhorse (`type Show { … }`).
+> **Does this service own data/fields that belong in the client-facing graph?**
 
-**The three root objects** — ordinary objects GraphQL treats as entry points:
-`Query` (reads), `Mutation` (writes), `Subscription` (a stream of events over time, realtime).
+And crucially:
 
-**Enum** — a closed set of named values (`enum ShowKind { MOVIE SERIES }`); anything else is
-a validation error.
+> A subgraph is a **domain boundary, not necessarily one microservice**. A domain (say
+> Catalog) may be backed by **several** internal microservices, with **one** subgraph in
+> front exposing the slice of them that clients need. So it's not "every client-facing
+> service is its own subgraph" — it's "each domain publishes **one** subgraph, which may
+> sit atop many services."
 
-**Interface** — shared fields several objects implement; a field can return the interface and
-clients pick concrete fields via `... on Show { … }`.
+So the graph is a **shallow aggregation layer** — a handful of domains (Catalog, Reviews,
+Users, maybe Search) publish subgraphs, each fronting a whole domain.
 
-```graphql
-interface Media { id: ID!  title: String! }
-type Show implements Media { id: ID!  title: String!  kind: ShowKind! }
+**The router is a front door, not a service bus.** The router does exactly one job: take a
+client query, split it across the subgraphs that own the requested fields, stitch the results.
+It is **not** a general message bus. Backend services still talk to each other **directly** —
+gRPC, REST, events — for everything that isn't "a client asked for these fields."
+
+```text
+CLIENT-DRIVEN (through the router):        SERVICE-TO-SERVICE (direct, no router):
+  client → router → Catalog subgraph         Playback ──gRPC──► Licensing
+                 └→ Reviews subgraph          Recommendations ──gRPC──► Catalog
+                                              Billing ──event──► Notifications
 ```
 
-**Union** — "one of these types, sharing **no** common fields" — e.g. `union SearchResult = Show | Person | Collection`. Clients select per-type with inline fragments.
+Routing internal calls through the router would add a latency + failure hop on the client
+critical path, force internal calls through the *public* schema shape, and couple every
+interaction to the router's availability. So **gRPC service-to-service traffic doesn't go
+away** — it stays peer-to-peer (mesh territory: the L4/L7 balancing, xDS, deadlines from
+the [gRPC note](../grpc/)). gRPC lives in two places: the subgraph speaks GraphQL *upward*
+to the router, and often gRPC *sideways/downward* to peer services and its own data.
 
-**Input type** — a special object used **only for arguments** (you can't pass a regular
-`type` as an argument). Pure data-in:
+**The iceberg: what stays internal.** The graph is a thin slice near the top; most services
+sit below it and never see a client query. For a Netflix-shaped app:
 
-```graphql
-input ShowFilter { kind: ShowKind  releasedAfter: Int }
-type Query { shows(filter: ShowFilter): [Show!]! }
-```
+- **Behind a subgraph** (a resolver calls these over gRPC): licensing / DRM rights, the
+  encoding/transcoding pipeline, personalization & ranking (ML), artwork selection.
+- **Never near the graph** (own data planes): Open Connect CDN (serves the actual video
+  bytes), playback session / adaptive-bitrate control, the telemetry & event pipeline
+  (billions of QoE events), the data/ML training platform, billing & payments,
+  experimentation, fraud detection.
 
-**Modifiers — `!` (non-null) and `[]` (list).** Separate from *what kind* a type is. The
-list + non-null combinations mean different things, and this is the part worth pinning down:
+Some client paths also **bypass the graph entirely**: the video bytes come from the CDN
+(GraphQL only hands back the manifest/URLs), and playback telemetry is fire-and-forget
+events — not graph mutations. The graph is for **structured, read-heavy, aggregation-shaped**
+client data, where "give me exactly these fields across these domains in one trip" is the win.
 
-```graphql
-[Show]     # list may be null; items may be null
-[Show!]    # list may be null; no null items inside
-[Show!]!   # list never null (at least []), no null items   ← our `shows`
-[Show]!    # list never null; but items may be null
-```
-
-So `shows: [Show!]!` is a real contract: *always* a list, every element a real `Show`.
-`show(id: ID!): Show` is deliberately the opposite — a lookup **may miss**, so the return is
-nullable (`Show`, not `Show!`).
-
-### Two models: data (entity) vs API (DTO) — the Spring analogy
-
-_(draft — from the project; clicks if you've done layered services)_
-
-A common confusion: there are **two** `Show` types in a typed GraphQL server, and that's on
-purpose. It's the same entity-vs-DTO split as a Spring/JPA service:
-
-| Spring / JPA | GraphQL (this project) | Role |
-|---|---|---|
-| `@Entity` / DAO | `data/shows.ts` → `Show` | persistence/domain model — what the backend **stores** |
-| response **DTO** | generated `Show` (from SDL) | API contract — what clients **see** |
-| MapStruct / manual mapper | codegen **`mappers`** + **field resolvers** | translation between the two |
-
-The clean framing:
-
-> **entity (`data/shows.ts`) → DTO (generated from SDL), bridged by resolvers.** Fields that
-> match by name **auto-map for free** (the default resolver just reads the property); fields
-> that differ get a **field resolver** — *that function is your hand-written mapping* for that
-> one field. GraphQL's **`input` types** are the request-DTO side.
-
-Request vs response, in GraphQL terms:
-
-- **Response DTO** (data going *out*) → generated **object types** like `Show`. The entity's counterpart.
-- **Request DTO** (data coming *in*) → **`input` types**. Add a mutation `rateShow(input: RateShowInput!)`
-  and codegen generates a `RateShowInput` TS type — that's your request model.
-
-So GraphQL *enforces* the request/response DTO split (`type` out, `input` in — you can't swap
-them), and codegen emits a TS type for each side. Keep the two `Show`s separate for the same
-reason you didn't return JPA entities straight from a controller: the moment the shapes diverge
-(DB has `castIds`; API exposes `cast: [Person!]`), the seam is already there.
+{{< callout type="info" >}}
+**Why this matters:** federation unifies the *few* client-facing domains without forcing
+the deep iceberg of internal services into one schema. GraphQL federation and a large
+internal gRPC/event fabric coexist by design.
+{{< /callout >}}
 
 ## Federation (the endgame)
 
@@ -391,7 +431,19 @@ reason you didn't return JPA entities straight from a controller: the moment the
 - **The Router** — query planning, `_entities` resolution, fetching across subgraphs.
 - **Composition: build-time vs runtime** — schema registry, composition checks in CI, breaking-change detection; why build-time composition is the industry-standard safety net.
 - **Netflix's approach** — the DGS (Domain Graph Service) framework + federation. _(cited below)_
-- **[Field-level access governance](#field-level-access-governance)** — who (which consumer) may read which `Type.field`; why per-field default-deny matters in a federated graph (written below).
+
+### Federation vs schema stitching (the older way)
+
+Before federation, the way to combine schemas was **schema stitching**: a gateway imported
+each service's schema and you wrote **glue code at the gateway** to link types across services.
+The problem: that glue lived in the *gateway*, so the gateway had to know about every service's
+internals — a central bottleneck that every team had to coordinate through.
+
+> **Federation flips ownership.** Each subgraph *declares* how its types extend others
+> (`@key`, `@external`) **in its own schema**; the gateway/router just **composes** those
+> declarations — no hand-written stitching glue. Teams evolve their slice independently; the
+> router doesn't need bespoke per-service knowledge. That's why federation superseded stitching
+> for large multi-team graphs.
 
 ### Field-level access governance
 
@@ -465,7 +517,7 @@ service-level roles. Minimal ingredients: a registry mapping fine-grained resour
 consumers, enforcement at the gateway that consults it, an owner-routed approval workflow that
 persists decisions, and **default-deny** (new resources deny-by-default).
 
-## Production concerns
+## Production & scale
 
 The topics that separate "I built a GraphQL server" from "I run one at scale":
 
@@ -473,8 +525,30 @@ The topics that separate "I built a GraphQL server" from "I run one at scale":
 - **Security** — query **depth** & **complexity/cost** limits · **persisted-query safelisting** · disabling introspection in prod · field-level authorization in `context` · rate limiting.
 - **Performance** — DataLoader batching · avoiding resolver waterfalls · `@defer`/`@stream` · projection push-down to data sources.
 - **Reliability & ops** — partial errors & masking · timeouts/retries per subgraph · **observability** (per-resolver tracing, OpenTelemetry, Apollo traces).
-- **Schema evolution** — additive-only changes · `@deprecated` (no versioned URLs like REST) · composition checks to block breaking changes.
-- **Realtime** — **subscriptions** (WebSocket / SSE); see the [realtime family](../) in networking for transport tradeoffs.
+- **Schema evolution** — additive-only changes · `@deprecated` fields (no versioned URLs like REST) · composition checks to block breaking changes.
+
+### Scaling the router (how Netflix serves billions of requests)
+
+The router is where scale concentrates — and it's designed for it:
+
+- **Built for throughput.** The modern **Apollo Router is written in Rust** (replacing the older
+  Node gateway) precisely for high performance and low overhead on the hot path — it's doing
+  query planning + fan-out for every request.
+- **Stateless → horizontal scale.** The router holds no per-user state; each request is
+  self-contained. So you run **many identical router instances** behind a load balancer and add
+  more to handle more traffic — the classic **stateless horizontal scaling** story. On
+  **Kubernetes** that's just more replicas (a `Deployment` + `HorizontalPodAutoscaler`); routers
+  are stateless pods, so scaling is adding pods. Netflix-scale (billions of requests) is many
+  router replicas fronting the subgraphs.
+- **Subgraphs evolve independently.** Each subgraph (a domain boundary) is its **own** deployable
+  — its own repo, pipeline, and scaling profile. Teams ship their slice without coordinating a
+  monolith deploy; the router **composes** the current set of subgraphs (service discovery points
+  it at healthy subgraph instances). This independent evolvability is the organizational payoff of
+  federation, not just a technical one.
+
+_(The project keeps this simple for demo purposes — one router, subgraphs on localhost — but the
+same shape scales to K8s: stateless routers as a scalable Deployment, each subgraph its own
+service.)_
 
 ## GraphQL vs REST vs gRPC
 
@@ -491,10 +565,20 @@ _(cited by title/speaker/venue; verify the exact URL before relying on it)_
 - **Netflix** — *How Netflix Scales its API with GraphQL Federation* — Netflix Technology Blog. _(verify)_
 - **DataLoader** — [github.com/graphql/dataloader](https://github.com/graphql/dataloader) — the batching pattern, from Facebook.
 
+{{< details title="Planned topics" closed="true" >}}
+
+- **Pagination** — offset vs cursor; the Relay **connections** spec (`edges`/`node`/`pageInfo`).
+- **Errors** — partial success (`data` + `errors`), error masking, and why HTTP is usually `200`.
+- **Realtime** — **subscriptions** (WebSocket / SSE); see the [realtime family](../) in networking for transport tradeoffs.
+- **GraphQL vs REST vs gRPC** — full comparison table.
+
+{{< /details >}}
+
 ## Quick self-check (recall from memory)
 
-1. Client sends one query for a show's title **and** its reviews — how does the router get both when two different teams own them?
-2. What exactly is the N+1 problem in a resolver, and how does DataLoader fix it?
-3. Why is a GraphQL resolver "thin"? What lives behind it in production?
-4. Where can a GraphQL response be cached, and what makes caching harder than REST?
-5. Build-time vs runtime schema composition — what does the build-time check protect you from?
+1. What two REST problems does GraphQL target, and how does a single query address them?
+2. Client sends one query for a show's title **and** its reviews — how does the router get both when two different teams own them?
+3. What exactly is the N+1 problem in a resolver, and how does DataLoader fix it?
+4. Why is a GraphQL resolver "thin"? What lives behind it in production?
+5. Federation vs schema stitching — what did federation change about *where* the glue lives?
+6. Why can the router scale horizontally, and what makes that possible?
