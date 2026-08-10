@@ -7,12 +7,6 @@ single request can pull from many backends. This note starts from the basics and
 **federation** — the way large orgs (Netflix, etc.) run one graph across many
 independently-owned services.
 
-{{< callout type="info" >}}
-This note grows alongside a hands-on project in the repo:
-`projects/netflix-clone/` — a federated Netflix-style graph built one subgraph at a time
-(Catalog first, then Reviews, then a Router). Diagrams below map 1:1 to what we build.
-{{< /callout >}}
-
 ## What is GraphQL, and why does it exist?
 
 GraphQL came out of **Facebook (2012, open-sourced 2015)**. The problem it targeted: their
@@ -53,74 +47,134 @@ That's the core win:
 - **Where it's overkill:** a simple CRUD service with one consumer and one data source — plain
   REST is simpler. GraphQL earns its keep when *aggregation* and *client flexibility* matter.
 
-### What the tooling looks like
+## Fundamentals
 
-You develop against a **playground** — here, **Apollo Sandbox**: schema explorer on the left,
-your query in the middle, the live JSON response on the right (note the `200 · 105ms · 400B`
-stats). This is the project's catalog subgraph answering `shows { cast { name } title }`:
-
-![Apollo Sandbox playground at localhost:4001: left pane shows the schema Documentation explorer for the shows query and Show type fields (title, releaseYear, cast: [Person!]!); middle pane shows the query { shows { cast { name } title } }; right pane shows the JSON response listing each show's cast and title, with 200/105ms/400B stats](apollo_graphql_playground.png)
-
-*Browse the schema, write a query with autocomplete, run it, and get back exactly the fields
-you asked for.*
-
-## The basics: operations & the type system
-
-### The three operation types
+### Core operations
 
 A GraphQL schema has up to three **root** entry points — ordinary object types GraphQL treats
 specially:
 
-- **`Query`** — reads (the `shows`/`show` fields in our project).
-- **`Mutation`** — writes (create/update/delete).
-- **`Subscription`** — a stream of events pushed over time (realtime; WebSocket / SSE).
+**1. Queries (read)** — fetch data; the equivalent of REST `GET`. Read-only: they retrieve data
+and don't modify server state.
+
+```graphql
+query GetUser($id: ID!) {
+  user(id: $id) {
+    name
+    email
+  }
+}
+```
+
+**2. Mutations (write)** — create / update / delete; the equivalent of REST `POST`/`PUT`/`PATCH`/
+`DELETE`. They change server-side state. Unlike query fields (which execute in **parallel**),
+mutation fields execute **sequentially** to avoid race conditions.
+
+```graphql
+mutation UpdateUserName($id: ID!, $newName: String!) {
+  updateUser(id: $id, name: $newName) {
+    id
+    name
+  }
+}
+```
+
+**3. Subscriptions (real-time)** — the server pushes updates to connected clients when an event
+occurs. Instead of the request-response cycle, a subscription holds a **long-lived, persistent
+connection** (usually WebSockets): the client "listens," and the server pushes the payload when
+the event triggers.
+
+```graphql
+subscription OnUserCreated {
+  userCreated {
+    id
+    name
+  }
+}
+```
 
 ### The type system
 
-_(draft — grows as the project adds a Mutation, input filters, an interface)_
+First, what a schema file actually looks like — the **contract**, written in SDL (Schema
+Definition Language): the `Show` and `Person` types, an enum, and a `Query` root with the
+`shows`/`show` entry points:
 
-**Mental model:** **scalars & enums** are *leaves* (actual values); **objects, interfaces,
-unions** are *branches* (you select sub-fields on them); **input types** are data going *in*
-(arguments); **`!` and `[]`** are modifiers layered on any of them.
+```graphql {filename="schema.graphql"}
+"A movie or series in the catalog."
+type Show {
+  id: ID!               # ID! — required, opaque unique key
+  title: String!        # String! — required text
+  releaseYear: Int!
+  kind: ShowKind!       # an enum (below)
+  cast: [Person!]!      # a list of Person, never null, no null items
+}
 
-**Scalars** — the leaf values, can't be drilled into. Five built-in:
+type Person {
+  id: ID!
+  name: String!
+}
 
-| Scalar | Holds | In `shows.graphql` |
-|---|---|---|
-| `Int` | 32-bit signed integer | `releaseYear: Int!` |
-| `Float` | double-precision float | — |
-| `String` | UTF-8 text | `title: String!` |
-| `Boolean` | `true` / `false` | — |
-| `ID` | opaque unique key — serialized as a String, but "don't do math on it" | `id: ID!` |
+"A one-off movie or an episodic series."
+enum ShowKind {
+  MOVIE
+  SERIES
+}
 
-You can define **custom scalars** too (`scalar DateTime`, `scalar URL`) with serialize/parse
-logic in code — common for dates/emails.
-
-**Object type** — a named set of fields; the workhorse (`type Show { … }`).
-
-**Enum** — a closed set of named values (`enum ShowKind { MOVIE SERIES }`); anything else is
-a validation error.
-
-**Interface** — shared fields several objects implement; a field can return the interface and
-clients pick concrete fields via `... on Show { … }`.
-
-```graphql
-interface Media { id: ID!  title: String! }
-type Show implements Media { id: ID!  title: String!  kind: ShowKind! }
+# The Query root: the read entry points a client can ask for.
+type Query {
+  shows: [Show!]!        # all shows
+  show(id: ID!): Show    # one show by id (nullable — the lookup may miss)
+}
 ```
 
-**Union** — "one of these types, sharing **no** common fields" — e.g. `union SearchResult = Show | Person | Collection`. Clients select per-type with inline fragments.
+A client picks fields off that schema, and the **response mirrors the query's shape** —
+containing *only* the fields asked for:
 
-**Input type** — a special object used **only for arguments** (you can't pass a regular
-`type` as an argument). Pure data-in:
-
-```graphql
-input ShowFilter { kind: ShowKind  releasedAfter: Int }
-type Query { shows(filter: ShowFilter): [Show!]! }
+```graphql {filename="query"}
+query {
+  shows {
+    cast { name }
+    title
+  }
+}
 ```
 
-**Modifiers — `!` (non-null) and `[]` (list).** Separate from *what kind* a type is. The
-list + non-null combinations mean different things, and this is the part worth pinning down:
+```json {filename="response"}
+{
+  "data": {
+    "shows": [
+      {
+        "cast": [{ "name": "Millie Bobby Brown" }, { "name": "David Harbour" }],
+        "title": "Stranger Things"
+      },
+      {
+        "cast": [{ "name": "Robert De Niro" }, { "name": "Al Pacino" }],
+        "title": "The Irishman"
+      }
+      // …one entry per show
+    ]
+  }
+}
+```
+
+Here's that example in a playground (Apollo Sandbox):
+
+![Apollo Sandbox playground at localhost:4001: left pane shows the schema Documentation explorer for the shows query and Show type fields (title, releaseYear, cast: [Person!]!); middle pane shows the query { shows { cast { name } title } }; right pane shows the JSON response listing each show's cast and title, with 200/105ms/400B stats](apollo_graphql_playground.png)
+
+Now the pieces of that schema, one kind at a time.
+
+**Mental model** (the frame worth remembering): **scalars & enums** are *leaves* (actual
+values — `String`, `Int`, `ID`, `Boolean`, `Float`, or an enum like `ShowKind`); **objects**
+are *branches* you select sub-fields on (`Show`, `Person`); **input types** are the data going
+*in* as arguments (you can't pass a regular `type` as an argument — request DTOs use `input`);
+and **`!`/`[]`** are modifiers layered on any of them. *(Interfaces and unions exist too, for
+polymorphic fields — reach for them when a field can return one of several types.)*
+
+To learn more, refer to the official [GraphQL docs](https://graphql.org/learn/introduction/).
+
+The part actually worth internalizing (the rest is lookup-able): **nullability is a
+contract** — `!` (non-null) and `[]` (list), which are modifiers separate from *what kind* a
+type is. The list + non-null combinations each mean something different:
 
 ```graphql
 [Show]     # list may be null; items may be null
@@ -129,68 +183,95 @@ list + non-null combinations mean different things, and this is the part worth p
 [Show]!    # list never null; but items may be null
 ```
 
-So `shows: [Show!]!` is a real contract: *always* a list, every element a real `Show`.
-`show(id: ID!): Show` is deliberately the opposite — a lookup **may miss**, so the return is
-nullable (`Show`, not `Show!`).
-
 ## Resolvers
 
-A **resolver** is the function behind a field — it produces that field's data. A resolver map
-mirrors the schema's shape: for each type, field-name → function. Key idea: a resolver is
-**thin** — it *delegates* to a data source and returns plain data; it doesn't hold business
-logic or talk to a DB directly. Fields with no explicit resolver use a **default resolver**
-(read the property of the same name off the parent object).
+A **resolver** is the function behind a field — it produces that field's data. There's one
+(conceptually) per field, and when a resolver returns an object, the resolvers for *its* fields
+run next — so resolving a query walks the tree from the root down.
 
-### Two models: data (entity) vs API (DTO) — the Spring analogy
+Every resolver has access to the same things, whatever the language or framework:
 
-_(draft — from the project; clicks if you've done layered services)_
+- **the parent** — the object this field belongs to (what the resolver one level up returned).
+- **the arguments** — what the client passed for this field (e.g. an `id`).
+- **a per-request context** — shared state for the request (auth/user, DB handles, loaders).
 
-A common confusion: there are **two** `Show` types in a typed GraphQL server, and that's on
-purpose. It's the same entity-vs-DTO split as a Spring/JPA service:
+There are two kinds: a **top-level entry point** (a `Query`/`Mutation` field) and a
+**field/computed resolver** (a field on a type). The example below is JavaScript, but the
+*shape* is universal — other stacks express the same thing differently (e.g. Netflix's **DGS**
+uses Java annotations like `@DgsQuery` / `@DgsData`, graphql-java uses `DataFetcher`s):
 
-| Spring / JPA | GraphQL (this project) | Role |
-|---|---|---|
-| `@Entity` / DAO | `data/shows.ts` → `Show` | persistence/domain model — what the backend **stores** |
-| response **DTO** | generated `Show` (from SDL) | API contract — what clients **see** |
-| MapStruct / manual mapper | codegen **`mappers`** + **field resolvers** | translation between the two |
+```js {filename="resolvers.js (JavaScript / Apollo)"}
+const resolvers = {
+  // 1. Top-level entry point: fetch the show matching the client's argument id
+  Query: {
+    show: (parent, args, context) => context.db.getShowById(args.id),
+  },
 
-The clean framing:
+  Show: {
+    // 2. Field resolver: `parent` is the show the query returned; fetch its cast
+    cast: (parent, args, context) => context.db.getCastForShow(parent.id),
 
-> **entity (`data/shows.ts`) → DTO (generated from SDL), bridged by resolvers.** Fields that
-> match by name **auto-map for free** (the default resolver just reads the property); fields
-> that differ get a **field resolver** — *that function is your hand-written mapping* for that
-> one field. GraphQL's **`input` types** are the request-DTO side.
+    // 3. Computed resolver: no fetch — just derives a value from `parent`
+    isReleased: (parent) => parent.releaseYear <= new Date().getFullYear(),
+  },
+};
+```
 
-Request vs response, in GraphQL terms:
+Two ideas to hold onto:
 
-- **Response DTO** (data going *out*) → generated **object types** like `Show`. The entity's counterpart.
-- **Request DTO** (data coming *in*) → **`input` types**. Add a mutation `rateShow(input: RateShowInput!)`
-  and codegen generates a `RateShowInput` TS type — that's your request model.
+- **Resolvers are thin.** A resolver *delegates* to a data source and returns plain data — it
+  doesn't hold business logic. And that source can be **anything**: a DB query, a REST call, a
+  gRPC call. GraphQL doesn't care (see ["where GraphQL fits"](#where-graphql-fits-in-a-microservices-architecture)).
+- **You only write the interesting ones.** Fields with no explicit resolver use a **default
+  resolver** — just read the property of the same name off the parent. So `Show.title` needs no
+  code; you only write resolvers for entry points and fetched/computed fields like `cast`.
 
-So GraphQL *enforces* the request/response DTO split (`type` out, `input` in — you can't swap
-them), and codegen emits a TS type for each side. Keep the two `Show`s separate for the same
-reason you didn't return JPA entities straight from a controller: the moment the shapes diverge
-(DB has `castIds`; API exposes `cast: [Person!]`), the seam is already there.
-
-## One client query → many downstream calls
+## The N+1 problem
 
 A **single** client query hitting a **single** service can explode into many downstream
 calls (gRPC / HTTP / SQL). Two multipliers stack:
 
 **1. Breadth — fields fan out to different backends.** One `Show` may need several services;
-each field's resolver makes its own call. This is expected — it's the aggregation GraphQL
-exists to do (the client would've made these calls itself over REST anyway).
+each field's resolver makes its own call. Take this query:
 
-```text
-query { show(id:"1") { title  boxArt  availability  bingeScore } }
-                        │       │        │             │
-                        DB    Artwork   Licensing    Ranking/ML
+```graphql {filename="query"}
+query {
+  show(id: "1") {
+    title          # from the catalog DB
+    posterImage    # a URL, from an images REST service
+    availability   # from a licensing gRPC service
+    bingeScore     # from an ML ranking service
+  }
+}
 ```
+
+Each field is resolved independently, and the source can differ per field — a DB read here, a
+gRPC call there, a REST call for another:
+
+```js {filename="resolvers.js"}
+const resolvers = {
+  Show: {
+    // title needs no resolver — it's already on the show object (default resolver).
+    posterImage:  (show, _args, ctx) => ctx.imagesApi.getPosterUrl(show.id),        // REST → URL
+    availability: (show, _args, ctx) => ctx.licensingClient.getAvailability(show.id), // gRPC
+    bingeScore:   (show, _args, ctx) => ctx.rankingClient.scoreFor(show.id),        // gRPC/ML
+  },
+};
+```
+
+This fan-out is expected — it's the aggregation GraphQL exists to do (the client would've made
+these calls itself over REST anyway). The win: the client makes **one** request; the several
+backend calls happen server-side, in the datacenter.
+
+> **Note — GraphQL returns a URL, not the image.** `posterImage` resolves to a *string URL*; the
+> client then fetches the actual bytes from a **CDN**, out of band. GraphQL carries structured
+> data and *pointers* to blobs — the blobs (images, video) travel over HTTP/CDN, never through
+> the graph. (Same reason video streaming bypasses the graph — see [the iceberg](#where-graphql-fits-in-a-microservices-architecture).)
 
 **2. Depth × cardinality — the N+1 problem (the dangerous one).** A **list** field where a
 per-item resolver runs once per element:
 
-```text
+```graphql {filename="query"}
 query {
   shows(first: 20) {     # 1 call  → getShows(limit: 20)
     title
@@ -200,104 +281,74 @@ query {
 # → 1 + 20 = 21 calls for what should be 2
 ```
 
-### Why N+1 happens: normalization
+{{< callout type="info" >}}
+N+1 comes from **normalization** — related data sits behind an id, so fetching it for a
+list means one lookup per item. GraphQL doesn't cause this; it makes deeply-nested data
+easy to *request*, surfacing the N+1 that was always there.
+{{< /callout >}}
 
-The `cast` resolver runs independently for each of the 20 shows and, on its own, doesn't
-know the other 19 are also asking. But the *root cause* is *why* a second call is needed at
-all: **related data lives behind a reference (an id), not embedded.**
+### Why it happens
 
-- The Catalog DB stores `Show { title, castIds: [42, 87] }` — just **pointers**. The real
-  person records (name, photo, bio) live in a **People/Talent service**, because cast is
-  shared across thousands of titles and you don't duplicate an actor's bio into every show.
-  So the fetched `Show` has no cast objects — resolving `cast { name }` means calling People
-  per show.
-- Same shape **inside one DB** with a naive ORM: `SELECT … FROM shows LIMIT 20` (1), then a
-  lazy `show.cast` fires `SELECT … WHERE show_id = ?` **per row** (20).
-- A `Show` *would* already contain its cast only if **denormalized/embedded** (e.g. a doc
-  store nesting the full cast) — but that trades N+1 for duplication, and you hit N+1 again
-  the moment you ask for a field the embedded copy lacks (`cast { awards }`).
+Concretely: a `Show` stores `castIds: [42, 87]` — just pointers — while the real person records
+live elsewhere (a People service, or a separate `cast` table), because cast is shared across
+thousands of titles. So resolving `cast` means a lookup **per show**.
 
-> N+1 comes from **normalization** — related data sits behind an id, so fetching it for a
-> list means one lookup per item. GraphQL doesn't cause this; it makes deeply-nested data
-> easy to *request*, surfacing the N+1 that was always there.
+- **Across services or in one DB — same shape.** With a naive ORM it's `SELECT … FROM shows
+  LIMIT 20` (1 query), then a lazy `show.cast` firing `SELECT … WHERE show_id = ?` **per row**
+  (20 more).
+- **Embedding avoids it, but has a cost.** A `Show` would already contain its cast only if
+  **denormalized** — which trades N+1 for data duplication, and you hit N+1 again the moment you
+  ask for a field the embedded copy lacks (`cast { awards }`).
 
-### The fix: DataLoader (batch + dedupe per request)
 
-DataLoader is a **request-scoped middleman** between resolvers and the data source. Resolvers
-stop fetching directly and instead call `loader.load(id)` — which returns a Promise *without
-fetching yet*. DataLoader collects every id requested in the **same event-loop tick**, then
-calls your **batch function once** with the whole array, and hands each caller its result.
 
-```text
-cast resolver, show 1 → load("1") ┐
-cast resolver, show 2 → load("2") │  (each gets a pending Promise; nothing fetched yet)
-cast resolver, show 3 → load("3") ├─► batchFn(["1".."20"]) ONCE ─► getCastForShows([...])
-        ...                       │      returns [c1..c20], DataLoader settles each Promise
-cast resolver, show 20 → load("20")┘                              21 calls → 2
-```
+### The fix: DataLoader
 
-Two halves make it work, and **both** are required:
+> DataLoader is a generic utility to be used as part of your application's data fetching layer
+> to provide a consistent API over various backends and reduce requests to those backends via
+> batching and caching. — [DataLoader](https://github.com/graphql/dataloader)
 
-1. **The gather-across-a-tick trick (DataLoader's job).** All N `cast` resolvers run in the same
-   JS tick; DataLoader collects their ids during the tick and flushes one batch at the end. It's
-   automatic — it exploits the event loop (see the [concurrency note](../../concurrency/event-loop-vs-threads/)).
-2. **A real bulk fetch (your job).** The batch function must do a genuine multi-key fetch
-   (`WHERE id IN (...)`, `MGET`, a `BatchGet` RPC). If it just loops single fetches internally,
-   you've batched the *ids* but not the *calls* — no win.
-
-> "Isn't DataLoader just a bulk API?" The **bulk fetch** is the easy half (you write it).
-> DataLoader is the **coordination layer**: it turns N independently-executing resolver calls —
-> each holding one id, each unaware of the others — into one bulk call, without you threading the
-> ids together by hand. Plus a **per-request cache** that dedupes repeats (a person in two shows
-> is fetched once) and must be **built fresh per request** (in `context`) so it resets and never
-> leaks between users.
-
-**When there's no bulk endpoint:** DataLoader batches *keys in your process*; it can't batch
-network calls a remote API won't accept together. If the source only offers single-id fetches,
-the N→1 collapse isn't possible — fall back to: get a batch endpoint added (best), lean on
-DataLoader's **dedup cache**, **cap concurrency** (e.g. `p-limit`) to survive the fan-out, or
-**cache responses** across requests. "Does this source support multi-key fetch?" is a question
-you ask when designing a resolver.
-
-So the fix is **batching**, not "embed everything." This is why these topics
-cluster: **resolvers → N+1 → DataLoader → complexity limits** are all facets of "one query,
-many downstream calls."
+Instead of each resolver fetching on its own, it hands its id to a loader with `load(id)`. The
+loader **collects all the ids requested at nearly the same moment**, makes **one batched call**
+with the whole list, then gives each caller back its result.
 
 ![Inside the Catalog subgraph resolving a shows-with-cast query, side by side: without DataLoader the cast field resolver makes 5 separate findCastForShow calls (6 total, N+1); with DataLoader the 5 .load(id) calls are gathered in one tick into a single batched findCastForShows call (2 total)](catalog-dataloader-zoom.svg)
 
-*Zoom into the catalog subgraph. Left: the N+1 — one `findCastForShow` per show. Right: the same resolver calls `loader.load(id)`, and DataLoader collapses them into one batched fetch. This is the exact behavior the project's terminal logs show (6 calls → 2).*
+*Left: the N+1 — one `findCastForShow` per show. Right: the same resolver calls `loader.load(id)`, and DataLoader collapses them into one batched fetch (6 calls → 2).*
 
-### How you detect it (predict, prevent, confirm)
+```text
+cast resolver, show 1  → load("1")  ┐
+cast resolver, show 2  → load("2")  │  collected together,
+        ...                         ├─►  getCastForShows(["1".."20"])   ← ONE call
+cast resolver, show 20 → load("20") ┘
 
-A fair question: as a developer, do you know N+1 is coming *ahead of time*, or only after a
-performance incident? Both — and mature teams shift it left.
+21 calls → 2   (1 for the list of shows + 1 batched call for all their cast)
+```
 
-**The structural tell** — the earliest signal, visible while writing code: a **single-item
-fetch invoked inside a list field**. A data function shaped `findCastForShow(showId)`
-(singular, one id) called under `shows: [Show!]!` *must* run once per show. A batch-shaped
-`findCastForShows(showIds: [])` (plural, array) can't — the plural/singular shape of your
-fetch function is the tell.
+Two parts make it work, and you need both:
 
-- **Predict (schema-design time).** Any field returning an object/list that's fetched from a
-  *separate source* is an N+1 candidate — `Show.cast` where `Person` lives in another
-  table/service. You can circle the risky edges by reading the schema.
-- **Prevent (review / lint / convention).** ESLint rules (`graphql-no-n-plus-one`-style,
-  graphql-eslint) flag a field resolver doing I/O without a loader; many shops just **mandate
-  DataLoader for any cross-source field** as policy, so N+1 is prevented rather than detected.
-- **Confirm (runtime — the real answer).** You *confirm and discover* it by observing execution:
-  - **Tracing / APM** (OpenTelemetry, Apollo traces, Datadog) — one request as a waterfall;
-    the `cast` span repeated 20× is unmistakable. The single most reliable signal.
-  - **DB / query logs** — `SELECT … WHERE show_id = ?` logged 20× with different ids; slow-query
-    logs and `pg_stat_statements` surface "same query shape, huge call count."
-  - **Metrics** — latency that **scales with result-set size** (p99 climbs as a list grows) is a
-    classic N+1 fingerprint.
+1. **The loader collects the ids** for you — the resolvers stay simple (`load(id)`), and the
+   loader batches them behind the scenes. (In a single-threaded runtime like Node it gathers the
+   ids within one event-loop tick; the mechanism differs per platform, but the idea is the same.)
+2. **You provide a batch function** that does a *genuine* multi-key fetch — `WHERE id IN (...)`, a
+   Redis `MGET`, a `BatchGet` RPC. If it secretly loops single fetches, you've batched the ids but
+   not the calls — no win.
 
-> **The trap:** N+1 is *invisible at small data sizes*. With 3 shows it's 4 fast calls and feels
-> fine; with a 200-item list it's 201 calls and p99 falls over. That's why latency-scales-with-
-> list-size is the fingerprint, why load tests catch what dev misses, and why simulating
-> per-call latency (as this project does) makes the cost visible *before* production.
+It also **caches within the request**, so a person appearing in two shows is fetched once. That
+cache is why a loader is **created fresh per request** — it should reset each request and never
+leak data between users.
 
-### Another fix: joins (when the data is co-located)
+{{< callout type="info" >}}
+"Isn't this just a bulk API?" The bulk fetch is the easy half — *you* write it. DataLoader is the
+**coordination layer**: it turns N separate resolver calls, each holding one id and unaware of the
+others, into one bulk call — without you wiring the ids together by hand.
+{{< /callout >}}
+
+**If the source has no bulk endpoint,** the N→1 collapse isn't possible — the loader can't batch
+calls a backend won't accept together. Fall back to: get a batch endpoint added (best), lean on the
+dedup cache, cap concurrency to survive the fan-out, or cache responses across requests.
+
+### Another fix: joins
 
 DataLoader isn't the only answer. If the related data lives in the **same database**, you can
 **JOIN** instead of making a second fetch at all:
@@ -308,85 +359,117 @@ SELECT shows.*, cast.* FROM shows JOIN cast ON cast.show_id = shows.id;  -- one 
 
 One round-trip, no per-item calls. But joins have their own traps:
 
-- **Only works when co-located.** If cast lives in a *separate service* (the federated case),
-  there's no table to join against — you're back to DataLoader over the network.
-- **Over-fetching by default.** A naive resolver that always joins pulls cast **even when the
-  client didn't ask for `cast`** — wasted work on every query.
-- **The fix for that: look at what was requested.** The 4th resolver arg, `info`, describes the
-  query's requested fields. A resolver can inspect it and **conditionally join** only when `cast`
-  is in the selection set (libraries like `graphql-fields` / dataloader-less "look-ahead"
-  patterns do this). Powerful, but couples the resolver to query shape and is fiddly to maintain.
+- **Only works when co-located.** If cast lives in a *separate service*, there's no table to
+  join against — you're back to DataLoader over the network.
+- **Over-fetching by default.** A resolver that always joins pulls cast **even when the client
+  didn't ask for it** — wasted work on every query. The fix: inspect what the client actually
+  requested and **join only when `cast` is in the query** ("look-ahead"). Powerful, but couples
+  the resolver to the query shape.
 
-> **Rule of thumb:** **join** when the data is co-located and you can scope it to the request
-> (`info`-driven); **DataLoader** when data is normalized across sources/services (the common
-> case, and the only option once federated). Many production resolvers use **both** — a join for
-> same-DB relations, a loader for cross-service ones.
+> **Rule of thumb:** **join** when data is co-located; **DataLoader** when it's spread across
+> sources/services (the common case, and the only option once federated). Many resolvers use
+> both. In JS, query builders / ORMs like [Prisma](https://www.prisma.io/),
+> [Knex](https://knexjs.org/), and [Drizzle](https://orm.drizzle.team/) build these joins.
 
-In the JS world, query builders / ORMs like [Knex](https://knexjs.org/),
-[Prisma](https://www.prisma.io/), and [Drizzle](https://orm.drizzle.team/) are what you'd
-reach for to build these joins (and some integrate DataLoader-style batching) — worth a look
-if the data layer interests you.
+### Catching it early
 
-### The honest tradeoff
+The trap: **N+1 is invisible at small data sizes.** With 3 shows it's a handful of fast calls
+and feels fine; with 200 it's 201 calls and your p99 latency falls over. So you want to catch it
+early:
 
-GraphQL doesn't *remove* the complexity of fetching from many places — it **relocates** it.
-The client's job gets simpler (one request, exactly the fields it wants); in exchange the
-**server** inherits a potential explosion of downstream calls.
+- **While writing code** — the tell is a **single-item fetch inside a list field** (a
+  `getCastForShow(id)` called per show). Any field fetched from a *separate source* is a
+  candidate. Many teams just **require a DataLoader for every cross-source field** as a rule, so
+  it never ships.
+- **At runtime** — the clearest signals: **tracing** (one request shows the same `cast` call
+  repeated 20×), **DB query logs** (the same query 20× with different ids), or **latency that
+  grows with list size**.
 
-> The fan-out moves from the **client's network** (many internet round-trips) to the
-> **server's network** (many datacenter calls). Usually a good trade — datacenter calls are
-> fast and parallel, and the client over a flaky mobile link is the worse place to do N
-> round-trips — **but** the complexity doesn't vanish, it lands on the backend as call
-> proliferation. So **batching (DataLoader) and cost/depth limits aren't optional at scale**;
-> they're what keep the relocated complexity from becoming an outage.
+### Defending the fan-out
 
-Defenses: DataLoader (batch N+1), query **depth/complexity limits** (reject an exploding
-query before running it), **pagination** (never unbounded lists), and **per-backend
-timeouts** (one slow downstream can't hang the whole query).
+Recall the [core tradeoff](#what-is-graphql-and-why-does-it-exist): GraphQL relocates the
+fan-out from the client's network to the server's. That's usually a win — but the complexity
+doesn't vanish, so at scale these defenses aren't optional:
 
-## The distributed graph: where GraphQL sits in a system
+- **DataLoader** — batch N+1 into one call (above).
+- **Depth / complexity limits** — reject an exploding query *before* running it.
+- **Pagination** — never unbounded lists.
+- **Per-backend timeouts** — one slow downstream can't hang the whole query.
 
-Zoom out from one service. In production, a client (phone, TV, web) sends **one** GraphQL query.
-It rides HTTP through the edge and an API gateway to a **router**, which owns the combined
-("federated") schema. The router figures out which backend services own which fields, fans
-the query out to them, and stitches the results back into one response.
+## Federation
+
+So far we've pictured **one** GraphQL server. That's fine for a small team — but a large consumer
+app like Netflix has **dozens of teams** contributing to its graph. As one giant GraphQL server,
+every team would edit the same schema and resolvers, constantly stepping on each other.
+
+**Federation** splits the graph so each team owns and deploys their own slice, while the client
+still sends **one** query to **one** endpoint. That query travels over HTTP through the edge and
+an API gateway to a **router**, which owns the combined ("federated") schema, figures out which
+services own which fields, fans the query out, and stitches the results into one response:
 
 ![High-level architecture: phone/TV/web clients send one GraphQL query through CDN and API gateway to a federated GraphQL router, which fans out planned sub-queries to Catalog, Reviews, and Users subgraphs, each owning its own data source; caching happens at every hop](architecture-overview.svg)
 
-*The whole system at a glance. The project builds it right-to-left: first a single Catalog subgraph, then Reviews extending it, then the Router in front.*
+> Each field is resolved by the **team that owns it**. GraphQL stays a **composition /
+> presentation layer** — the real data lives in the services behind it (gRPC/REST + databases).
 
-The one idea to hold onto:
+Three pieces make that up:
 
-> The client sees **one** schema and sends **one** request. Each field is resolved by the
-> team that owns it. GraphQL is a **composition / presentation layer** — the real data
-> lives in services behind it (gRPC/REST + databases).
+**Subgraph** — one team's slice of the graph: a standalone GraphQL service that owns a **domain**
+(Catalog owns `Show`, Reviews owns ratings, Users owns profiles), with its own schema, resolvers,
+data, and deploy. A subgraph is a *domain boundary*, not necessarily one microservice — a domain
+may sit atop several backing services, but it publishes **one** subgraph to the graph.
 
-### Where GraphQL fits in a microservices architecture
+**Supergraph** — the single schema formed by **composing all the subgraphs** together
+(supergraph = composition of subgraphs). It's the unified API the client sees; no client ever
+talks to a subgraph directly. Composition is driven by a config that lists the subgraphs and where
+they live:
 
-The natural question once you see the diagram: *does every service become a GraphQL
-subgraph, and does all service-to-service traffic now route through the router?* **No on
-both counts** — and getting this right is most of the intuition.
+```yaml {filename="supergraph.yaml"}
+subgraphs:
+  catalog:
+    routing_url: http://catalog:4001/graphql
+    schema: { file: ./catalog.graphql }
+  reviews:
+    routing_url: http://reviews:4002/graphql
+    schema: { file: ./reviews.graphql }
+```
 
-**A subgraph is a *domain boundary*, not a microservice.** The dividing line for "should this
-be a subgraph?" is **not** client-facing vs internal. It's:
+**Router** — the entity that sits in front, holds the composed supergraph, and does three things
+per request:
 
-> **Does this service own data/fields that belong in the client-facing graph?**
+1. **Query planning** — work out which subgraph(s) own the requested fields.
+2. **Execution** — call them in the right order (some calls depend on another's result).
+3. **Stitching** — assemble the sub-responses into one clean result.
 
-And crucially:
+The client never sees any of this — one query to one endpoint, one response. The router's own
+runtime behavior (headers, auth, telemetry, limits) is configured separately, e.g. a
+`router.yaml`.
 
-> A subgraph is a **domain boundary, not necessarily one microservice**. A domain (say
-> Catalog) may be backed by **several** internal microservices, with **one** subgraph in
-> front exposing the slice of them that clients need. So it's not "every client-facing
-> service is its own subgraph" — it's "each domain publishes **one** subgraph, which may
-> sit atop many services."
+The one hard part: letting one team's type *refer to* another's. Reviews wants to attach a
+`reviews` field to a `Show` — but **Catalog** owns `Show`. Federation solves this with two ideas:
 
-So the graph is a **shallow aggregation layer** — a handful of domains (Catalog, Reviews,
-Users, maybe Search) publish subgraphs, each fronting a whole domain.
+> **Federation = identity + ownership.** Each type has an **identity** (a `@key` — a field like
+> `id` that uniquely identifies it) and an **owner** (the subgraph that defines it). Any other
+> subgraph can then *reference* that type by its key and contribute fields to it.
 
-**The router is a front door, not a service bus.** The router does exactly one job: take a
-client query, split it across the subgraphs that own the requested fields, stitch the results.
-It is **not** a general message bus. Backend services still talk to each other **directly** —
-gRPC, REST, events — for everything that isn't "a client asked for these fields."
+A type with a `@key` is an **entity** — e.g. `Show @key(fields: "id")`. Entities are the shared
+domain objects (`Show`, `User`) that multiple subgraphs attach fields to; the `@key` is the
+handle that makes those cross-subgraph references possible. (The current standard is **Apollo
+Federation 2**; Netflix builds this with its **DGS** framework.)
+
+### Not everything becomes a subgraph
+
+A natural question: *does every service become a subgraph, and does all service-to-service
+traffic now route through the router?* **No on both counts.** The dividing line for "should this
+be a subgraph?" isn't client-facing vs internal — it's *does this own data/fields that belong in
+the client-facing graph?* So the graph is a **shallow aggregation layer**: a handful of domains
+(Catalog, Reviews, Users, maybe Search) publish subgraphs; most services sit behind or beside
+them.
+
+**The router is a front door, not a service bus.** It only splits a client query across the
+subgraphs that own the requested fields and stitches the results. Backend services still talk to
+each other **directly** — gRPC, REST, events — for everything that isn't "a client asked for
+these fields":
 
 ```text
 CLIENT-DRIVEN (through the router):        SERVICE-TO-SERVICE (direct, no router):
@@ -395,44 +478,34 @@ CLIENT-DRIVEN (through the router):        SERVICE-TO-SERVICE (direct, no router
                                               Billing ──event──► Notifications
 ```
 
-Routing internal calls through the router would add a latency + failure hop on the client
-critical path, force internal calls through the *public* schema shape, and couple every
-interaction to the router's availability. So **gRPC service-to-service traffic doesn't go
-away** — it stays peer-to-peer (mesh territory: the L4/L7 balancing, xDS, deadlines from
-the [gRPC note](../grpc/)). gRPC lives in two places: the subgraph speaks GraphQL *upward*
-to the router, and often gRPC *sideways/downward* to peer services and its own data.
+Routing internal calls through the router would add a latency + failure hop and couple every
+interaction to the router. So **gRPC service-to-service traffic doesn't go away** — it stays
+peer-to-peer ([mesh territory](../grpc/)). A subgraph speaks GraphQL *upward* to the router, and
+often gRPC *sideways* to peer services and its own data.
 
-**The iceberg: what stays internal.** The graph is a thin slice near the top; most services
-sit below it and never see a client query. For a Netflix-shaped app:
+**The iceberg: what stays internal.** The graph is a thin slice near the top; most services sit
+below it and never see a client query. For a Netflix-shaped app:
 
-- **Behind a subgraph** (a resolver calls these over gRPC): licensing / DRM rights, the
-  encoding/transcoding pipeline, personalization & ranking (ML), artwork selection.
-- **Never near the graph** (own data planes): Open Connect CDN (serves the actual video
-  bytes), playback session / adaptive-bitrate control, the telemetry & event pipeline
-  (billions of QoE events), the data/ML training platform, billing & payments,
-  experimentation, fraud detection.
+- **Behind a subgraph** (a resolver calls these): licensing / DRM, encoding/transcoding,
+  personalization & ranking (ML), artwork.
+- **Never near the graph** (own data planes): the CDN serving video bytes, playback/adaptive-
+  bitrate control, the telemetry pipeline (billions of events), the ML training platform, billing,
+  experimentation, fraud.
 
-Some client paths also **bypass the graph entirely**: the video bytes come from the CDN
-(GraphQL only hands back the manifest/URLs), and playback telemetry is fire-and-forget
-events — not graph mutations. The graph is for **structured, read-heavy, aggregation-shaped**
-client data, where "give me exactly these fields across these domains in one trip" is the win.
+Some client paths **bypass the graph entirely** — video bytes come from the CDN (GraphQL only
+returns the manifest/URLs), and playback telemetry is fire-and-forget events. The graph is for
+**structured, read-heavy, aggregation-shaped** client data. Federation unifies the *few*
+client-facing domains without forcing the deep iceberg of internal services into one schema.
 
-{{< callout type="info" >}}
-**Why this matters:** federation unifies the *few* client-facing domains without forcing
-the deep iceberg of internal services into one schema. GraphQL federation and a large
-internal gRPC/event fabric coexist by design.
-{{< /callout >}}
+### Resolving across subgraphs
 
-## Federation (the endgame)
+So how does Reviews attach `reviews` to a `Show` it doesn't own? When the router needs an
+entity's fields from another subgraph, it hands that subgraph a **reference** — just the type
+name and key, `{ __typename: "Show", id }`. The subgraph resolves that reference into an object
+and its [field resolvers](#resolvers) fill in the fields it owns (`reviews`). Reviews never needs
+the full `Show` — just the `id` — which is exactly why the `@key` matters.
 
-- **Why federate** — one graph, many teams shipping independently; no monolithic schema, no central resolver bottleneck.
-- **Subgraphs** — each service publishes its slice of the schema + resolvers + data.
-- **Entities & `@key`** — a type one subgraph *owns* and others *extend* (Reviews adds `reviews` to Catalog's `Show`).
-- **The Router** — query planning, `_entities` resolution, fetching across subgraphs.
-- **Composition: build-time vs runtime** — schema registry, composition checks in CI, breaking-change detection; why build-time composition is the industry-standard safety net.
-- **Netflix's approach** — the DGS (Domain Graph Service) framework + federation. _(cited below)_
-
-### Federation vs schema stitching (the older way)
+### Federation vs schema stitching
 
 Before federation, the way to combine schemas was **schema stitching**: a gateway imported
 each service's schema and you wrote **glue code at the gateway** to link types across services.
@@ -445,110 +518,81 @@ internals — a central bottleneck that every team had to coordinate through.
 > router doesn't need bespoke per-service knowledge. That's why federation superseded stitching
 > for large multi-team graphs.
 
-### Field-level access governance
+Composing the subgraphs into the supergraph happens at **build time** (via a schema registry +
+composition checks in CI): if one team's change would break the combined schema — a broken
+cross-subgraph reference, an incompatible type — it's caught **before deploy**, not at runtime.
+That build-time safety net is a big part of why federation scales to many teams.
 
-_(draft — captured from a discussion; the sharp enterprise concern in a federated graph)_
+## Production concerns
 
-In a federated graph the **supergraph sees every `Type.field` from every subgraph**, and many
-consumers (client apps, internal tools) query one gateway. With Personally Identifiable
-Information (PII), compliance, and security in play, the enterprise question becomes: **who is
-allowed to read which field?** — and, critically, when a subgraph adds a new (possibly
-sensitive) field, it must **not** become blindly readable by everyone.
+The topics that separate "I built a GraphQL server" from "I run one at scale."
 
-**Core idea (one sentence):**
-
-> Access is granted per **(type, field) × consumer**, **default-deny**, and each grant is an
-> **owner-approved request** that doubles as the permanent record.
-
-Unpack it:
-
-- **Per-field, not per-service.** A consumer isn't granted "the People subgraph" — it's granted
-  a specific list like `Person.name`, `Person.filmography`. The unit of authorization is one field.
-- **Per-consumer.** Each calling app has its own allowlist; App A's grant does nothing for App B.
-- **Default-deny.** A field is unreadable until explicitly granted — *even though it's visible in
-  the schema*. **Visibility ≠ authorization** (two separate layers).
-- **Owner-approved.** The request routes to the team that owns the field; they consent or refuse.
-- **Request = record.** Each grant is tracked (requester, exact fields, approver, timestamp) — the
-  workflow *is* the audit trail.
-
-The gateway holds a live mapping, e.g.:
-
-```text
-Person.id            → allowed for: [appA, appB, ...]
-Person.name          → allowed for: [appA, ...]
-Person.filmography   → allowed for: [appA, ...]
-Person.agentContact  → allowed for: [ ]        ← newly added field: nobody, yet
-```
-
-**Why per-field + default-deny is the crux.** Because grants enumerate *specific* fields, a
-consumer's prior approval says nothing about a field that didn't exist yet — a new field starts
-with an **empty allowlist**. So adding a field can never *silently* widen who reads data; each new
-field forces the owner to re-consent, per consumer. If access were **per-service**, adding a
-sensitive field would leak it to every historical consumer of that service by default. Per-field
-default-deny closes that hole *by construction*.
-
-**What the system gives you:** (1) **runtime authorization** — the gateway rejects any field the
-caller isn't listed for; (2) a **system of record** — reverse-lookup "who can read
-`Person.agentContact`?" or "what can App X read?", with approver + timestamp; (3) **compliance** —
-provable least-privilege/data-minimization, named accountability (auto-approvals get removed over
-time — an auto-grant is an unaccountable grant), change safety, and fast incident scoping.
-
-**Two distinctions worth keeping straight:**
-
-- **Grant-time vs run-time.** The grant record answers *"can this app ever read this field?"* It
-  does **not** record *"did it, when, how often?"* — that's runtime query logs/telemetry. Full
-  auditability needs **both**; the grant record is not a substitute for access logging.
-- **Application-field vs contextual (per-subject) authorization.** Field-level app auth answers
-  *"can this app read this field type at all?"* — not *"may this session see **this customer's**
-  data right now?"* The latter is a separate contextual gate. The most sensitive fields may add a
-  third layer: **encryption-scoped access** (encrypted at rest; decryption needs its own grant, so
-  field access ≠ plaintext access). Regulated systems tend to stack all three.
-
-**Costs (it's not free):** developer friction (every new field a consumer needs is an approval
-before shipping); approval **bottlenecks / rubber-stamping** if owners are overloaded; governance
-overhead (maintaining the registry, pruning stale/orphaned grants — grants accumulate and rarely
-get revoked); it's coarse at the row/subject grain (still need the contextual layer); and
-**grant ≠ usage**. Good tooling (query builders, batch requests, sensible defaults for
-low-sensitivity fields, clear sensitivity tiers) is what keeps the friction bearable.
-
-**Generalizes beyond GraphQL:** any shared multi-team API surface, data-sharing platforms
-(per-column grants approved by data owners), internal platform APIs that outgrew coarse
-service-level roles. Minimal ingredients: a registry mapping fine-grained resources → allowed
-consumers, enforcement at the gateway that consults it, an owner-routed approval workflow that
-persists decisions, and **default-deny** (new resources deny-by-default).
-
-## Production & scale
-
-The topics that separate "I built a GraphQL server" from "I run one at scale":
-
-- **Caching (multi-layer)** — client normalized cache · CDN/edge · **Automatic Persisted Queries (APQ)** · router response cache + `@cacheControl` · per-request DataLoader.
-- **Security** — query **depth** & **complexity/cost** limits · **persisted-query safelisting** · disabling introspection in prod · field-level authorization in `context` · rate limiting.
-- **Performance** — DataLoader batching · avoiding resolver waterfalls · `@defer`/`@stream` · projection push-down to data sources.
-- **Reliability & ops** — partial errors & masking · timeouts/retries per subgraph · **observability** (per-resolver tracing, OpenTelemetry, Apollo traces).
-- **Schema evolution** — additive-only changes · `@deprecated` fields (no versioned URLs like REST) · composition checks to block breaking changes.
-
-### Scaling the router (how Netflix serves billions of requests)
+### Scalability
 
 The router is where scale concentrates — and it's designed for it:
 
 - **Built for throughput.** The modern **Apollo Router is written in Rust** (replacing the older
-  Node gateway) precisely for high performance and low overhead on the hot path — it's doing
-  query planning + fan-out for every request.
-- **Stateless → horizontal scale.** The router holds no per-user state; each request is
-  self-contained. So you run **many identical router instances** behind a load balancer and add
-  more to handle more traffic — the classic **stateless horizontal scaling** story. On
-  **Kubernetes** that's just more replicas (a `Deployment` + `HorizontalPodAutoscaler`); routers
-  are stateless pods, so scaling is adding pods. Netflix-scale (billions of requests) is many
-  router replicas fronting the subgraphs.
-- **Subgraphs evolve independently.** Each subgraph (a domain boundary) is its **own** deployable
-  — its own repo, pipeline, and scaling profile. Teams ship their slice without coordinating a
-  monolith deploy; the router **composes** the current set of subgraphs (service discovery points
-  it at healthy subgraph instances). This independent evolvability is the organizational payoff of
-  federation, not just a technical one.
+  Node gateway) for high performance and low overhead on the hot path — it does query planning +
+  fan-out for every request.
+- **Stateless → horizontal scale.** The router holds no per-user state, so you run **many
+  identical instances** behind a load balancer and add more for more traffic. On **Kubernetes**
+  that's just more replicas (a `Deployment` + `HorizontalPodAutoscaler`). Handling billions of
+  requests is just many router replicas fronting the subgraphs.
+- **Subgraphs scale independently.** Each subgraph is its own deployable with its own scaling
+  profile; teams ship their slice without a monolith deploy, and the router composes the current
+  set (service discovery points it at healthy instances).
 
-_(The project keeps this simple for demo purposes — one router, subgraphs on localhost — but the
-same shape scales to K8s: stateless routers as a scalable Deployment, each subgraph its own
-service.)_
+### Observability & telemetry
+
+Because one client query fans out into many resolver/subgraph calls, you need to see *inside* a
+request. Distributed **tracing** (OpenTelemetry, Apollo traces) renders each request as a
+waterfall of spans — the fastest way to spot an N+1 (a resolver span repeated 20×), a slow
+subgraph, or a downstream timeout. Pair it with per-resolver **metrics** (latency, error rate,
+call counts) and structured logs.
+
+### Governance (field-level access)
+
+_(draft)_
+
+Once many consumers (client apps, internal tools) query one graph — especially with Personally
+Identifiable Information (PII), compliance, and security in play — the question becomes: **who is
+allowed to read which field?** And, critically, when a team adds a new (possibly sensitive) field,
+it must **not** become blindly readable by everyone. (Most acute in a federated graph, where the
+supergraph exposes every `Type.field` from every subgraph — but the pattern applies to any shared
+API.)
+
+> **Core idea:** access is granted per **(type, field) × consumer**, **default-deny**, and each
+> grant is an **owner-approved request** that doubles as the audit record.
+
+- **Per-field, not per-service** — a consumer is granted specific fields (`Person.name`), not "the
+  People subgraph." **Per-consumer** — each app has its own allowlist.
+- **Default-deny.** A field is unreadable until granted — *even though it's visible in the schema*.
+  Visibility ≠ authorization.
+- **Owner-approved & recorded.** The request routes to the field's owning team; each grant is
+  tracked (requester, fields, approver, timestamp) — the workflow *is* the audit trail.
+
+**Why per-field + default-deny is the crux:** because grants name *specific* fields, a new field
+starts with an **empty allowlist** — so adding one can never *silently* widen who reads data. If
+access were per-service, a new sensitive field would leak to every historical consumer by default.
+
+Two distinctions worth keeping straight:
+
+- **Grant vs usage.** The grant record answers *"can this app ever read this field?"* — not *"did
+  it, when, how often?"* (that's the telemetry above). Full auditability needs both.
+- **App-field vs per-subject auth.** "Can this app read this field type?" is separate from "may
+  this session see **this customer's** row right now?" The latter is a contextual gate; the most
+  sensitive fields may add encryption-scoped access on top.
+
+The cost is real: every new field a consumer needs is an approval before shipping, which creates
+friction and risks rubber-stamping if owners are overloaded — good tooling and clear sensitivity
+tiers are what keep it bearable.
+
+### Other essentials
+
+- **Caching (multi-layer)** — client normalized cache · CDN/edge · Automatic Persisted Queries (APQ) · router response cache · per-request DataLoader.
+- **Security** — query **depth / complexity limits**, persisted-query safelisting, disabling introspection in prod, rate limiting.
+- **Schema evolution** — additive-only changes; `@deprecated` fields instead of versioned URLs; composition checks block breaking changes.
+- **Reliability** — partial errors (`data` + `errors`), per-subgraph timeouts/retries.
 
 ## GraphQL vs REST vs gRPC
 
@@ -561,8 +605,10 @@ precise fetching. They compose — a GraphQL resolver often calls a gRPC service
 
 _(cited by title/speaker/venue; verify the exact URL before relying on it)_
 
-- Official docs — [graphql.org/learn](https://graphql.org/learn/) · [Apollo Federation docs](https://www.apollographql.com/docs/federation/)
+- Official docs — [graphql.org/learn](https://graphql.org/learn/) (authoritative intro + full type reference) · [Apollo Federation docs](https://www.apollographql.com/docs/federation/)
 - **Netflix** — *How Netflix Scales its API with GraphQL Federation* — Netflix Technology Blog. _(verify)_
+- YouTube — *Design Principles of Federated GraphQL* — Martijn Walraven (Apollo), [GraphQLConf 2024](https://www.youtube.com/watch?v=asv-XakmUuA).
+- YouTube — *GraphQL Federation: The Architecture That Powers Netflix's 70+ Microservices* — [ByteMonk](https://www.youtube.com/watch?v=TG6fvxEpDvQ).
 - **DataLoader** — [github.com/graphql/dataloader](https://github.com/graphql/dataloader) — the batching pattern, from Facebook.
 
 {{< details title="Planned topics" closed="true" >}}
