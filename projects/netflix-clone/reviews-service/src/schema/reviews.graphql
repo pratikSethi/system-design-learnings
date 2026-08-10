@@ -1,0 +1,29 @@
+# Reviews subgraph schema (SDL).
+# This service OWNS Review, and CONTRIBUTES fields to Show — a type that the CATALOG
+# subgraph owns. That's the core federation move: reference another subgraph's entity by
+# its @key and add your own fields to it, without owning the type.
+
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key"])
+
+"A viewer's rating + comment for a show."
+type Review {
+  "Stable unique id."
+  id: ID!
+  "1–5 star rating."
+  rating: Int!
+  "Optional free-text comment."
+  comment: String
+}
+
+# Show is OWNED by the catalog subgraph. We reference it by its @key ("id") and add the
+# fields Reviews owns. In Federation 2 there's no `extend` keyword and no @external on the
+# key — just re-declare the type with the same @key; composition merges the two definitions.
+type Show @key(fields: "id") {
+  "The @key — matches catalog's Show.id. This is all Reviews needs to attach its fields."
+  id: ID!
+  "All reviews for this show."
+  reviews: [Review!]!
+  "Mean rating across this show's reviews, or null if none yet."
+  averageRating: Float
+}
