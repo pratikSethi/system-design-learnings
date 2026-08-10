@@ -457,6 +457,17 @@ domain objects (`Show`, `User`) that multiple subgraphs attach fields to; the `@
 handle that makes those cross-subgraph references possible. (The current standard is **Apollo
 Federation 2**; Netflix builds this with its **DGS** framework.)
 
+{{< callout type="info" >}}
+**Mental model: `@key` ≈ a primary key; a cross-subgraph reference ≈ a foreign key.** The
+relationship modeling is the same as a relational database — one side owns the identity, the
+other refers to it by that identity. But two differences matter: (1) the "join" is a
+**distributed key-lookup across services** (the router passes a reference `{ __typename, id }`
+to the owning subgraph, which hydrates it — closer to a `BatchGet` by key than an in-engine
+`JOIN`), and (2) there's **no referential-integrity enforcement** — a `@key` *resolves*
+relationships, it doesn't *guarantee* them (Reviews can hold a `showId` for a Show that Catalog
+deleted). Cross-service integrity is the app's problem, not the graph's.
+{{< /callout >}}
+
 ### Not everything becomes a subgraph
 
 A natural question: *does every service become a subgraph, and does all service-to-service
@@ -504,6 +515,10 @@ entity's fields from another subgraph, it hands that subgraph a **reference** �
 name and key, `{ __typename: "Show", id }`. The subgraph resolves that reference into an object
 and its [field resolvers](#resolvers) fill in the fields it owns (`reviews`). Reviews never needs
 the full `Show` — just the `id` — which is exactly why the `@key` matters.
+
+![Federation entity resolution: a client sends { shows { title reviews { rating } } } to the router; step 1 the router fetches shows (id + title) from the Catalog subgraph which owns Show; step 2 the router sends each Show as an entity reference { __typename: Show, id } to the Reviews subgraph, whose __resolveReference and field resolvers fill in reviews/averageRating by id; step 3 the router stitches the results by the Show @key into one response — Catalog's title alongside Reviews' reviews](federation-entity-resolution.svg)
+
+*The router never does a "join" — it fetches `Show` from Catalog, passes each Show's `@key` (`id`) to Reviews as an entity reference, and stitches the two services' fields into one response.*
 
 ### Federation vs schema stitching
 
