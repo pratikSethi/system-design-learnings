@@ -12,6 +12,15 @@ This note grows alongside a hands-on project in the repo:
 (Catalog first, then Reviews, then a Router). Diagrams below map 1:1 to what we build.
 {{< /callout >}}
 
+What you actually interact with while developing — the **Apollo Sandbox** playground: schema
+explorer on the left, your query in the middle, the live JSON response on the right (note the
+`200 · 105ms · 400B` stats). This is the catalog subgraph from the project answering
+`shows { cast { name } title }`:
+
+![Apollo Sandbox playground at localhost:4001: left pane shows the schema Documentation explorer for the shows query and Show type fields (title, releaseYear, cast: [Person!]!); middle pane shows the query { shows { cast { name } title } }; right pane shows the JSON response listing each show's cast and title, with 200/105ms/400B stats](apollo_graphql_playground.png)
+
+*The catalog subgraph in Apollo Sandbox — browse the schema, write a query with autocomplete, run it, and get back exactly the fields you asked for.*
+
 ## The shape of a production GraphQL system
 
 Before any syntax, the big picture. A client (phone, TV, web) sends **one** GraphQL query.
@@ -150,18 +159,49 @@ all: **related data lives behind a reference (an id), not embedded.**
 
 ### The fix: DataLoader (batch + dedupe per request)
 
-Resolvers **register** the id they need; a loader collects them within a tick and makes
-**one batched** call — and caches within the single request, so a person needed by two
-fields is fetched once.
+DataLoader is a **request-scoped middleman** between resolvers and the data source. Resolvers
+stop fetching directly and instead call `loader.load(id)` — which returns a Promise *without
+fetching yet*. DataLoader collects every id requested in the **same event-loop tick**, then
+calls your **batch function once** with the whole array, and hands each caller its result.
 
 ```text
-20 resolvers ask for cast[1..20]  ──(batched in one tick)──►  ONE call: getCastForShows([1..20])
-                                                              21 calls → 2
+cast resolver, show 1 → load("1") ┐
+cast resolver, show 2 → load("2") │  (each gets a pending Promise; nothing fetched yet)
+cast resolver, show 3 → load("3") ├─► batchFn(["1".."20"]) ONCE ─► getCastForShows([...])
+        ...                       │      returns [c1..c20], DataLoader settles each Promise
+cast resolver, show 20 → load("20")┘                              21 calls → 2
 ```
+
+Two halves make it work, and **both** are required:
+
+1. **The gather-across-a-tick trick (DataLoader's job).** All N `cast` resolvers run in the same
+   JS tick; DataLoader collects their ids during the tick and flushes one batch at the end. It's
+   automatic — it exploits the event loop (see the [concurrency note](../../concurrency/event-loop-vs-threads/)).
+2. **A real bulk fetch (your job).** The batch function must do a genuine multi-key fetch
+   (`WHERE id IN (...)`, `MGET`, a `BatchGet` RPC). If it just loops single fetches internally,
+   you've batched the *ids* but not the *calls* — no win.
+
+> "Isn't DataLoader just a bulk API?" The **bulk fetch** is the easy half (you write it).
+> DataLoader is the **coordination layer**: it turns N independently-executing resolver calls —
+> each holding one id, each unaware of the others — into one bulk call, without you threading the
+> ids together by hand. Plus a **per-request cache** that dedupes repeats (a person in two shows
+> is fetched once) and must be **built fresh per request** (in `context`) so it resets and never
+> leaks between users.
+
+**When there's no bulk endpoint:** DataLoader batches *keys in your process*; it can't batch
+network calls a remote API won't accept together. If the source only offers single-id fetches,
+the N→1 collapse isn't possible — fall back to: get a batch endpoint added (best), lean on
+DataLoader's **dedup cache**, **cap concurrency** (e.g. `p-limit`) to survive the fan-out, or
+**cache responses** across requests. "Does this source support multi-key fetch?" is a question
+you ask when designing a resolver.
 
 So the fix is **batching**, not "embed everything." This is why these roadmap topics
 cluster: **resolvers → N+1 → DataLoader → complexity limits** are all facets of "one query,
 many downstream calls."
+
+![Inside the Catalog subgraph resolving a shows-with-cast query, side by side: without DataLoader the cast field resolver makes 5 separate findCastForShow calls (6 total, N+1); with DataLoader the 5 .load(id) calls are gathered in one tick into a single batched findCastForShows call (2 total)](catalog-dataloader-zoom.svg)
+
+*Zoom into the catalog subgraph. Left: the N+1 — one `findCastForShow` per show. Right: the same resolver calls `loader.load(id)`, and DataLoader collapses them into one batched fetch. This is the exact behavior the project's terminal logs show (6 calls → 2).*
 
 ### How you detect it (predict, prevent, confirm)
 
@@ -192,6 +232,36 @@ fetch function is the tell.
 > fine; with a 200-item list it's 201 calls and p99 falls over. That's why latency-scales-with-
 > list-size is the fingerprint, why load tests catch what dev misses, and why simulating
 > per-call latency (as this project does) makes the cost visible *before* production.
+
+### Another fix: joins (when the data is co-located)
+
+DataLoader isn't the only answer. If the related data lives in the **same database**, you can
+**JOIN** instead of making a second fetch at all:
+
+```sql
+SELECT shows.*, cast.* FROM shows JOIN cast ON cast.show_id = shows.id;  -- one query, no N+1
+```
+
+One round-trip, no per-item calls. But joins have their own traps:
+
+- **Only works when co-located.** If cast lives in a *separate service* (the federated case),
+  there's no table to join against — you're back to DataLoader over the network.
+- **Over-fetching by default.** A naive resolver that always joins pulls cast **even when the
+  client didn't ask for `cast`** — wasted work on every query.
+- **The fix for that: look at what was requested.** The 4th resolver arg, `info`, describes the
+  query's requested fields. A resolver can inspect it and **conditionally join** only when `cast`
+  is in the selection set (libraries like `graphql-fields` / dataloader-less "look-ahead"
+  patterns do this). Powerful, but couples the resolver to query shape and is fiddly to maintain.
+
+> **Rule of thumb:** **join** when the data is co-located and you can scope it to the request
+> (`info`-driven); **DataLoader** when data is normalized across sources/services (the common
+> case, and the only option once federated). Many production resolvers use **both** — a join for
+> same-DB relations, a loader for cross-service ones.
+
+In the JS world, query builders / ORMs like [Knex](https://knexjs.org/),
+[Prisma](https://www.prisma.io/), and [Drizzle](https://orm.drizzle.team/) are what you'd
+reach for to build these joins (and some integrate DataLoader-style batching) — worth a look
+if the data layer interests you.
 
 ### The honest tradeoff
 

@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4b5563"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#059669"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#7c3aed"/>
+    </marker>
+    <style>
+      .title    { font-size: 25px; font-weight: 700; fill: #111827; }
+      .subtitle { font-size: 14px; fill: #6b7280; }
+      .panel    { font-size: 16px; font-weight: 700; fill: #111827; }
+      .box      { font-size: 14px; font-weight: 600; fill: #111827; }
+      .sub      { font-size: 11.5px; fill: #6b7280; }
+      .lbl      { font-size: 12px; font-weight: 600; fill: #374151; }
+      .lblred   { font-size: 12px; font-weight: 700; fill: #dc2626; }
+      .lblgreen { font-size: 12px; font-weight: 700; fill: #059669; }
+      .mono     { font-size: 11.5px; font-family: 'SFMono-Regular', Consolas, monospace; fill: #374151; }
+      .count    { font-size: 13px; font-weight: 700; }
+      .note     { font-size: 12px; fill: #4b5563; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="760" fill="#f9fafb"/>
+  <text x="40" y="42" class="title">Inside the Catalog subgraph — resolving <tspan font-family="monospace" font-size="20px">{ shows { title cast { name } } }</tspan></text>
+  <text x="40" y="66" class="subtitle">Same query, two data-layer designs. The Show.cast field resolver runs once per show either way — what differs is how many backend calls result.</text>
+
+  <!-- ===================== LEFT PANEL: N+1 ===================== -->
+  <rect x="30" y="90" width="560" height="600" rx="12" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
+  <text x="52" y="120" class="panel" fill="#b91c1c">✗ Without DataLoader — N+1</text>
+
+  <!-- query root -->
+  <rect x="210" y="140" width="200" height="52" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="310" y="164" text-anchor="middle" class="box">Query.shows</text>
+  <text x="310" y="182" text-anchor="middle" class="sub">findAllShows() → 5 shows</text>
+
+  <!-- to cast resolvers -->
+  <line x1="310" y1="192" x2="310" y2="220" stroke="#4b5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="470" y="212" text-anchor="middle" class="sub">Apollo runs Show.cast</text>
+  <text x="470" y="226" text-anchor="middle" class="sub">once PER show</text>
+
+  <!-- 5 cast resolvers -->
+  <g>
+    <rect x="70"  y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="116" y="262" text-anchor="middle" class="sub">cast(show 1)</text>
+    <rect x="172" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="218" y="262" text-anchor="middle" class="sub">cast(show 2)</text>
+    <rect x="274" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="320" y="262" text-anchor="middle" class="sub">cast(show 3)</text>
+    <rect x="376" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="422" y="262" text-anchor="middle" class="sub">cast(show 4)</text>
+    <rect x="478" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="524" y="262" text-anchor="middle" class="sub">cast(show 5)</text>
+  </g>
+
+  <!-- 5 separate calls down -->
+  <line x1="116" y1="286" x2="116" y2="360" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <line x1="218" y1="286" x2="218" y2="360" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <line x1="320" y1="286" x2="320" y2="360" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <line x1="422" y1="286" x2="422" y2="360" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <line x1="524" y1="286" x2="524" y2="360" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <text x="310" y="326" text-anchor="middle" class="lblred">5 separate calls: findCastForShow(id)</text>
+
+  <!-- People backend -->
+  <rect x="150" y="360" width="320" height="60" rx="10" fill="#ffffff" stroke="#34d399" stroke-width="2"/>
+  <text x="310" y="386" text-anchor="middle" class="box">People data source</text>
+  <text x="310" y="404" text-anchor="middle" class="sub">a call each = 5 round-trips</text>
+
+  <!-- count callout -->
+  <rect x="150" y="470" width="320" height="150" rx="10" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="310" y="500" text-anchor="middle" class="count" fill="#b91c1c">6 backend calls</text>
+  <text x="310" y="524" text-anchor="middle" class="note">1 (shows) + 5 (cast, one per show)</text>
+  <text x="310" y="548" text-anchor="middle" class="note">= the N+1 problem</text>
+  <text x="310" y="578" text-anchor="middle" class="note" font-weight="700">200 shows → 201 calls</text>
+  <text x="310" y="598" text-anchor="middle" class="sub">latency scales with list size</text>
+
+  <!-- ===================== RIGHT PANEL: DataLoader ===================== -->
+  <rect x="610" y="90" width="560" height="600" rx="12" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="632" y="120" class="panel" fill="#047857">✓ With DataLoader — batched</text>
+
+  <!-- query root -->
+  <rect x="790" y="140" width="200" height="52" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="890" y="164" text-anchor="middle" class="box">Query.shows</text>
+  <text x="890" y="182" text-anchor="middle" class="sub">findAllShows() → 5 shows</text>
+
+  <line x1="890" y1="192" x2="890" y2="220" stroke="#4b5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="1050" y="212" text-anchor="middle" class="sub">Show.cast runs per show —</text>
+  <text x="1050" y="226" text-anchor="middle" class="sub">but only calls .load(id)</text>
+
+  <!-- 5 cast resolvers -->
+  <g>
+    <rect x="650" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="696" y="262" text-anchor="middle" class="sub">cast(show 1)</text>
+    <rect x="752" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="798" y="262" text-anchor="middle" class="sub">cast(show 2)</text>
+    <rect x="854" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="900" y="262" text-anchor="middle" class="sub">cast(show 3)</text>
+    <rect x="956" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="1002" y="262" text-anchor="middle" class="sub">cast(show 4)</text>
+    <rect x="1058" y="240" width="92" height="46" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5"/>
+    <text x="1104" y="262" text-anchor="middle" class="sub">cast(show 5)</text>
+  </g>
+
+  <!-- .load() into loader -->
+  <line x1="696"  y1="286" x2="860" y2="332" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#arrowPurple)"/>
+  <line x1="798"  y1="286" x2="875" y2="332" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#arrowPurple)"/>
+  <line x1="900"  y1="286" x2="890" y2="332" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#arrowPurple)"/>
+  <line x1="1002" y1="286" x2="905" y2="332" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#arrowPurple)"/>
+  <line x1="1104" y1="286" x2="920" y2="332" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#arrowPurple)"/>
+  <text x="1000" y="312" text-anchor="middle" class="lblpurple" fill="#7c3aed">.load(id) — no fetch yet</text>
+
+  <!-- DataLoader box -->
+  <rect x="700" y="336" width="380" height="66" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2.5"/>
+  <text x="890" y="362" text-anchor="middle" class="box">DataLoader (per request)</text>
+  <text x="890" y="382" text-anchor="middle" class="sub">gathers ids in one tick → dedupes → batches</text>
+  <text x="890" y="396" text-anchor="middle" class="mono">keys: [1, 2, 3, 4, 5]</text>
+
+  <!-- ONE batched call -->
+  <line x1="890" y1="402" x2="890" y2="440" stroke="#059669" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
+  <text x="890" y="426" text-anchor="middle" class="lblgreen">ONE call: findCastForShows([1..5])</text>
+
+  <!-- People backend -->
+  <rect x="730" y="440" width="320" height="60" rx="10" fill="#ffffff" stroke="#34d399" stroke-width="2"/>
+  <text x="890" y="466" text-anchor="middle" class="box">People data source</text>
+  <text x="890" y="484" text-anchor="middle" class="sub">one bulk fetch (WHERE id IN ...)</text>
+
+  <!-- count callout -->
+  <rect x="730" y="530" width="320" height="130" rx="10" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="890" y="560" text-anchor="middle" class="count" fill="#047857">2 backend calls</text>
+  <text x="890" y="584" text-anchor="middle" class="note">1 (shows) + 1 (batched cast)</text>
+  <text x="890" y="610" text-anchor="middle" class="note" font-weight="700">200 shows → still 2 calls</text>
+  <text x="890" y="632" text-anchor="middle" class="sub">shared person fetched once (dedup)</text>
+
+  <!-- ===================== FOOTER ===================== -->
+  <text x="600" y="720" text-anchor="middle" class="note">The <tspan font-weight="700">cast resolver is identical</tspan> in both — it runs once per show. The only change: call <tspan font-family="monospace">loader.load(id)</tspan> instead of fetching directly.</text>
+  <text x="600" y="740" text-anchor="middle" class="note">DataLoader collects the ids and issues <tspan font-weight="700">one bulk fetch</tspan> — provided the data source supports a multi-key lookup.</text>
+</svg>
