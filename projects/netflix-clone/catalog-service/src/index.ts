@@ -15,15 +15,19 @@ import { ApolloServer } from "@apollo/server";
 import { startStandaloneServer } from "@apollo/server/standalone";
 
 import { resolvers } from "./resolvers/index.js";
+import { type Context, createContext } from "./context.js";
 
 // Resolve the schema path relative to THIS file (works regardless of cwd).
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const typeDefs = readFileSync(join(__dirname, "schema/shows.graphql"), "utf-8");
 
-const server = new ApolloServer({ typeDefs, resolvers });
+// Type the server with our Context so resolvers get a typed 3rd argument.
+const server = new ApolloServer<Context>({ typeDefs, resolvers });
 
 const { url } = await startStandaloneServer(server, {
   listen: { port: 4001 }, // catalog subgraph → 4001 (reviews will be 4002, router 4000)
+  // `context` runs ONCE PER REQUEST → fresh DataLoaders each time (see context.ts).
+  context: async () => createContext(),
 });
 
 console.log(`🎬 catalog-service ready at ${url}`);

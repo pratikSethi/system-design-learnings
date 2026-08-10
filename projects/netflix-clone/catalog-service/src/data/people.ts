@@ -52,3 +52,22 @@ export async function findCastForShow(showId: string): Promise<Person[]> {
   // TS treat the result as Person[] (indexing a Record can yield undefined).
   return ids.map((id) => PEOPLE[id]).filter(Boolean) as Person[];
 }
+
+/**
+ * BULK version: cast for MANY shows in ONE call. Stands in for a batch endpoint like
+ * `BatchGetCastForShows([ids])` or a `WHERE show_id IN (...)` query. This is what
+ * DataLoader calls once per batch — the whole point is that it does a SINGLE fetch for
+ * every id, NOT a loop of single fetches.
+ *
+ * Contract required by DataLoader: return an array the SAME LENGTH and SAME ORDER as the
+ * input — result[i] must be the cast for showIds[i]. We build a per-show list up front
+ * and map back positionally so the alignment always holds (even for ids with no cast).
+ */
+export async function findCastForShows(showIds: readonly string[]): Promise<Person[][]> {
+  console.log(`  [backend] findCastForShows([${showIds.join(", ")}])`);
+  await sleep(30); // ONE round-trip for all ids
+  return showIds.map((showId) => {
+    const personIds = CAST_BY_SHOW[showId] ?? [];
+    return personIds.map((id) => PEOPLE[id]).filter(Boolean) as Person[];
+  });
+}
