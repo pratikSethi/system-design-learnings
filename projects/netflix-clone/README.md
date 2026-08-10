@@ -35,7 +35,7 @@ Users) each become a **subgraph**, and a **router** stitches them into one graph
 | **1** | `catalog-service`: `shows` query → fake in-memory data + Apollo Sandbox playground | schema, resolver, how a query resolves | ✅ done |
 | **2** | `show(id)` query (arguments) + **GraphQL Code Generator** for end-to-end type safety | field arguments; schema-derived TS types (no drift) | ✅ done |
 | **3** | Async data source + a `cast` field → the **N+1 problem**, then **DataLoader** | resolver = thin delegation; N+1, batching, per-request `context`; joins as an alternative | ✅ done |
-| **4** | Add a `reviews` subgraph that `extend`s `Show`, put a **Router** in front | **federation** — `@key`, entity resolution, schema composition | ⬜ planned |
+| **4** | Add a `reviews` subgraph that references `Show`, put an **Apollo Router** in front | **federation** — `@key`, entity resolution, `rover` composition | ✅ done |
 | **5** | Build-time vs runtime composition; schema registry + composition/breaking-change checks | federation **tooling** & why it's the industry standard | ⬜ planned |
 
 ## Future chapters (rough, not committed)
@@ -48,28 +48,88 @@ each with its own concept focus: **auth** (authn/authz in `context`, field-level
 ## Companion diagrams (custom SVG, in the notes)
 
 1. ✅ **High-level device→data** — clients → CDN → gateway → router → subgraphs → data.
-2. ⬜ **Zoom: inside the Catalog subgraph** — resolver → DataLoader → backend → DB (build at step 3).
-3. ⬜ **Zoom: federation entity resolution** — `Show @key` + Reviews `extend`, as an "iceberg"
-   (graph layer on top, internal gRPC services below) (build at step 4).
+2. ✅ **Zoom: inside the Catalog subgraph** — resolver → DataLoader → backend (N+1 vs batched).
+3. ⬜ **Zoom: federation entity resolution** — router → `_entities` → `__resolveReference` across subgraphs.
 
 ## Services
 
 | Service | Domain | Port | Status | README |
 |---|---|---|---|---|
-| `catalog-service` | owns `Show` | 4001 | active | [catalog-service/README.md](catalog-service/README.md) |
-| `reviews-service` | extends `Show` with reviews | 4002 | planned | — |
-| `router` | composes subgraphs into one graph | 4000 | planned | — |
+| `catalog-service` | owns `Show` (title, cast, …) | 4001 | active | [catalog-service/README.md](catalog-service/README.md) |
+| `reviews-service` | contributes `reviews` / `averageRating` to `Show` | 4002 | active | — |
+| Apollo Router (via `rover dev`) | composes both subgraphs into one graph | 4000 | active | — |
 
-Each service has its own README with run/test instructions. Node projects here use the
-**public npm registry** via a project-local `.npmrc` (the machine's global npm may point at a
-private registry).
+Node projects here use the **public npm registry** via a project-local `.npmrc` (the machine's
+global npm may point at a private registry).
 
-## Running (current state)
+## Running the federated graph
+
+You need **three terminals**: one per subgraph, plus the router.
+
+### One-time: install the Rover CLI
+
+`rover` is Apollo's CLI — it composes the subgraphs and runs the real Apollo Router (Rust)
+locally. It's a global tool, not a project dependency:
 
 ```bash
-cd catalog-service
-npm install
-npm run dev        # http://localhost:4001/  → Apollo Sandbox playground
+npm install -g @apollo/rover --registry=https://registry.npmjs.org/
+# (--registry override is a one-time flag; it does NOT change your global npm config)
 ```
 
-See [catalog-service/README.md](catalog-service/README.md) for queries and CLI (curl/jq) usage.
+### 1 + 2. Start the subgraphs (terminals 1 & 2)
+
+```bash
+cd catalog-service && npm install && npm run dev     # 🎬 http://localhost:4001/
+cd reviews-service && npm install && npm run dev     # ⭐ http://localhost:4002/
+```
+
+Each subgraph is a standalone GraphQL server (`buildSubgraphSchema`) exposing the federation
+`_service` / `_entities` fields the router uses. A subgraph on its own has **no browsable
+top-level query for its contributed fields** — e.g. reviews' `reviews` field hangs off the
+`Show` entity, reached via `_entities`. That's expected; the router is what exposes the real
+`Query`.
+
+### 3. Compose + run the router (terminal 3)
+
+From the `netflix-clone/` root, with both subgraphs already up:
+
+```bash
+rover dev --supergraph-config supergraph.yaml --supergraph-port 4000
+# first run downloads the Apollo Router binary; accept the license with
+# APOLLO_ELV2_LICENSE=accept if prompted in a non-interactive shell
+```
+
+`rover dev` reads [`supergraph.yaml`](supergraph.yaml), polls each subgraph's schema, **composes**
+them into one supergraph, and runs the Apollo Router at **http://localhost:4000/** — recomposing
+automatically when a subgraph's schema changes.
+
+## Testing as a real client
+
+Open **http://localhost:4000/** (Apollo Sandbox) — this is the single endpoint a phone/TV/web
+client would use. It has no idea two services are behind it. Paste:
+
+```graphql
+query HomeScreen {
+  shows {
+    title          # from catalog
+    kind           # from catalog
+    cast { name }  # from catalog
+    reviews {      # from reviews (different service!)
+      rating
+      comment
+    }
+    averageRating  # from reviews
+  }
+}
+```
+
+One request, fields stitched from **both** subgraphs. `title`/`kind`/`cast` come from catalog;
+`reviews`/`averageRating` from reviews — the router plans the fan-out and joins the results by
+the `Show` `@key`. (Glass Onion has no reviews → `reviews: []`, `averageRating: null`.)
+
+CLI equivalent:
+
+```bash
+curl -s http://localhost:4000/ -H 'content-type: application/json' \
+  -d '{"query":"{ shows { title reviews { rating } averageRating } }"}' | jq
+```
