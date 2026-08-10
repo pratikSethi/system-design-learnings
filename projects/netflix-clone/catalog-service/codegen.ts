@@ -20,6 +20,11 @@ const config: CodegenConfig = {
     "./src/generated/graphql.ts": {
       plugins: ["typescript", "typescript-resolvers"],
       config: {
+        // Federation-aware codegen: understands @key/@link and generates the
+        // `__resolveReference` resolver type on entities (so we can type the
+        // reference resolver the router calls to fetch a Show by id).
+        federation: true,
+
         // Use TS `type` unions for enums (so ShowKind = 'MOVIE' | 'SERIES'),
         // matching our data layer rather than generating a separate enum object.
         enumsAsTypes: true,

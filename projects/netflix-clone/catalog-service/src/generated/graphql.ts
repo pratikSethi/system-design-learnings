@@ -10,6 +10,7 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
+  _FieldSet: { input: unknown; output: unknown; }
 };
 
 /** A person in a show's cast. Lives in a separate data source (a People/Talent service in prod). */
@@ -39,7 +40,7 @@ export type Show = {
   __typename?: 'Show';
   /** The cast of this show. Fetched from a separate data source per show — the N+1 candidate. */
   cast: Array<Person>;
-  /** Stable unique id. Will become the federation @key in a later step. */
+  /** Stable unique id — the federation @key that other subgraphs reference this Show by. */
   id: Scalars['ID']['output'];
   /** MOVIE or SERIES. */
   kind: ShowKind;
@@ -60,6 +61,17 @@ export type ShowKind =
 
 export type ResolverTypeWrapper<T> = Promise<T> | T;
 
+export type ReferenceResolver<TResult, TReference, TContext> = (
+      reference: TReference,
+      context: TContext,
+      info: GraphQLResolveInfo
+    ) => Promise<TResult> | TResult;
+
+      type ScalarCheck<T, S> = S extends true ? T : NullableCheck<T, S>;
+      type NullableCheck<T, S> = Maybe<T> extends T ? Maybe<ListCheck<NonNullable<T>, S>> : ListCheck<T, S>;
+      type ListCheck<T, S> = T extends (infer U)[] ? NullableCheck<U, S>[] : GraphQLRecursivePick<T, S>;
+      export type GraphQLRecursivePick<T, S> = { [K in keyof T & keyof S]: ScalarCheck<T[K], S[K]> };
+    
 
 export type ResolverWithResolve<TResult, TParent, TContext, TArgs> = {
   resolve: ResolverFn<TResult, TParent, TContext, TArgs>;
@@ -123,31 +135,41 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
   info: GraphQLResolveInfo
 ) => TResult | Promise<TResult>;
 
+/** Mapping of federation types */
+export type FederationTypes = {
+  Show: Show;
+};
 
+/** Mapping of federation reference types */
+export type FederationReferenceTypes = {
+  Show:
+    ( { __typename: 'Show' }
+    & GraphQLRecursivePick<FederationTypes['Show'], {"id":true}> );
+};
 
 
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
-  Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
-  ID: ResolverTypeWrapper<Scalars['ID']['output']>;
-  Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   Person: ResolverTypeWrapper<Person>;
+  ID: ResolverTypeWrapper<Scalars['ID']['output']>;
+  String: ResolverTypeWrapper<Scalars['String']['output']>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   Show: ResolverTypeWrapper<ShowMapper>;
+  Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   ShowKind: ShowKind;
-  String: ResolverTypeWrapper<Scalars['String']['output']>;
+  Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
 };
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
-  Boolean: Scalars['Boolean']['output'];
-  ID: Scalars['ID']['output'];
-  Int: Scalars['Int']['output'];
   Person: Person;
+  ID: Scalars['ID']['output'];
+  String: Scalars['String']['output'];
   Query: Record<PropertyKey, never>;
   Show: ShowMapper;
-  String: Scalars['String']['output'];
+  Int: Scalars['Int']['output'];
+  Boolean: Scalars['Boolean']['output'];
 };
 
 export type PersonResolvers<ContextType = any, ParentType extends ResolversParentTypes['Person'] = ResolversParentTypes['Person']> = {
@@ -160,7 +182,8 @@ export type QueryResolvers<ContextType = any, ParentType extends ResolversParent
   shows?: Resolver<Array<ResolversTypes['Show']>, ParentType, ContextType>;
 };
 
-export type ShowResolvers<ContextType = any, ParentType extends ResolversParentTypes['Show'] = ResolversParentTypes['Show']> = {
+export type ShowResolvers<ContextType = any, ParentType extends ResolversParentTypes['Show'] = ResolversParentTypes['Show'], FederationReferenceType extends FederationReferenceTypes['Show'] = FederationReferenceTypes['Show']> = {
+  __resolveReference?: ReferenceResolver<Maybe<ResolversTypes['Show']> | FederationReferenceType, FederationReferenceType, ContextType>;
   cast?: Resolver<Array<ResolversTypes['Person']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   kind?: Resolver<ResolversTypes['ShowKind'], ParentType, ContextType>;

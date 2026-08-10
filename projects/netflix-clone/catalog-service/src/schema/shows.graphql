@@ -2,9 +2,14 @@
 # This file is the CONTRACT. Resolvers (see ../resolvers) provide the data for each field.
 # The Catalog team owns both this schema and its resolvers — they are two halves of one thing.
 
+# Opt this schema into Apollo Federation 2. @link imports the federation directives we use;
+# @key marks entities so OTHER subgraphs (e.g. reviews) can reference and extend them.
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key"])
+
 "A movie or series in the Netflix catalog."
-type Show {
-  "Stable unique id. Will become the federation @key in a later step."
+type Show @key(fields: "id") {
+  "Stable unique id — the federation @key that other subgraphs reference this Show by."
   id: ID!
   "Display title, e.g. \"Stranger Things\"."
   title: String!

@@ -40,6 +40,11 @@ export const resolvers: Resolvers<Context> = {
   //   before: cast: (parent) => findCastForShow(parent.id)        // N calls
   //   after:  cast: (parent, _args, ctx) => ctx.loaders...load()  // 1 batched call
   Show: {
+    // ENTITY REFERENCE RESOLVER (federation). The router hands us a reference —
+    // { __typename: "Show", id } — when another subgraph (e.g. reviews) references a Show.
+    // We turn that id back into a full Show so its other fields can resolve.
+    __resolveReference: async (ref) => (await findShowById(ref.id)) ?? null,
+
     cast: (parent, _args, ctx) => ctx.loaders.castByShowId.load(parent.id),
   },
 };
